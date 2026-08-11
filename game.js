@@ -960,9 +960,17 @@ function fitStage() {
   const availH = window.innerHeight - reservedHeight - 16;
   const scale = Math.min(1, availW / (STAGE_W + STAGE_BORDER), availH / (STAGE_H + STAGE_BORDER));
 
-  stageEl.style.transform = `scale(${scale})`;
-  // Lets panels/modals (inside #stage) counteract this scale — see the
-  // touch media query in style.css for why that's needed.
+  // `zoom` (unlike `transform: scale`) actually resizes #stage's layout box,
+  // so #game-wrap's flex centering correctly centers the *rendered* size
+  // instead of centering the original 800x600 box and leaving the visually
+  // shrunk content stranded up in its top-left corner.
+  stageEl.style.zoom = scale;
+  // `zoom`, like `transform`, still scales down `position: fixed` descendants
+  // along with everything else (fixed elements aren't immune to an ancestor
+  // zoom, the same way they aren't immune to the browser's own page zoom) —
+  // so panels/modals inside #stage need this to counteract it and render at
+  // their originally-authored native size. See the touch media query in
+  // style.css. No-op on desktop, where scale (and this variable) is 1.
   document.documentElement.style.setProperty("--inv-stage-scale", 1 / scale);
 }
 
