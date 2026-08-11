@@ -1108,24 +1108,25 @@ canvas {
      the safe option — still bigger on-screen than desktop's own slots,
      since everything here renders through the same ambient cover-fit zoom. */
   .battle-enemies {
-    width: 260px;
-    max-width: 260px;
+    width: 270px;
+    max-width: 270px;
     flex-wrap: nowrap;
     gap: 4px;
   }
   .battle-enemy-slot {
     padding: 2px;
+    min-width: 0; /* let flex-shrink protect the 3-enemy case on the narrowest phones */
   }
   .battle-enemy-icon {
-    font-size: 32px;
+    font-size: 34px;
   }
   .battle-enemy-name {
     font-size: 9px;
   }
   .battle-enemy-stat {
-    width: 76px;
+    width: 84px;
   }
   .battle-enemy-bar {
-    width: 40px;
+    width: 46px;
   }
 }
