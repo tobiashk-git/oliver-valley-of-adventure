@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Oliver in the Valley of Adventure</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-wrap">
+    <h1 id="title">Oliver in the Valley of Adventure</h1>
+    <div id="stage">
+      <canvas id="game" width="800" height="600"></canvas>
+      <div id="hud">
+        <div class="hud-item"><span class="icon">🌲</span><span id="wood-count">0</span></div>
+        <div class="hud-item"><span class="icon">🪨</span><span id="stone-count">0</span></div>
+      </div>
+      <div id="prompt"></div>
+
+      <div id="encounter-flash" class="encounter-flash"></div>
+      <div id="encounter-marker" class="encounter-marker"></div>
+      <div id="encounter-caption" class="encounter-caption"></div>
+      <button id="encounter-enter-btn" class="encounter-enter-btn">Enter Combat</button>
+
+      <div id="character-panel" class="panel">
+        <div class="panel-header">Character</div>
+        <div class="panel-body">
+          <div id="char-name" class="char-name"></div>
+          <div class="stat-bar-row">
+            <span class="stat-label">HP</span>
+            <div class="stat-bar hp"><div id="char-hp-bar" class="stat-bar-fill"></div></div>
+            <span id="char-hp-text" class="stat-value"></span>
+          </div>
+          <div class="stat-bar-row">
+            <span class="stat-label">MP</span>
+            <div class="stat-bar mp"><div id="char-mp-bar" class="stat-bar-fill"></div></div>
+            <span id="char-mp-text" class="stat-value"></span>
+          </div>
+          <div class="attr-row"><span>Strength</span><span id="char-str"></span></div>
+          <div class="attr-row"><span>Agility</span><span id="char-agi"></span></div>
+        </div>
+      </div>
+
+      <div id="inventory-panel" class="panel">
+        <div class="panel-header">Inventory</div>
+        <div class="panel-body">
+          <div class="equip-row">
+            <div id="equip-weapon" class="equip-slot"></div>
+            <div id="equip-armor" class="equip-slot"></div>
+            <div id="equip-accessory" class="equip-slot"></div>
+          </div>
+          <div id="inv-grid" class="inv-grid"></div>
+        </div>
+      </div>
+
+      <div id="storage-modal" class="modal">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span id="storage-title">Chest</span>
+            <button id="storage-close-btn" class="close-btn">&times;</button>
+          </div>
+          <div id="storage-filters" class="filter-row">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="material">Materials</button>
+            <button class="filter-btn" data-filter="weapon">Weapons</button>
+            <button class="filter-btn" data-filter="armor">Armor</button>
+            <button class="filter-btn" data-filter="accessory">Accessories</button>
+            <button class="filter-btn" data-filter="consumable">Consumables</button>
+          </div>
+          <div class="modal-columns">
+            <div class="modal-col">
+              <div class="modal-col-header">
+                <span>Chest</span>
+                <button id="chest-sort-btn" class="sort-btn">Sort</button>
+              </div>
+              <div id="chest-grid" class="inv-grid modal-grid"></div>
+              <button id="storage-upgrade-btn" class="upgrade-btn"></button>
+            </div>
+            <div class="modal-col">
+              <div class="modal-col-header">
+                <span>Backpack</span>
+                <button id="backpack-sort-btn" class="sort-btn">Sort</button>
+              </div>
+              <div id="backpack-grid" class="inv-grid modal-grid"></div>
+            </div>
+          </div>
+          <p class="modal-hint">Click an item to move it to the other side.</p>
+        </div>
+      </div>
+
+      <div id="crafting-modal" class="modal">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span>Crafting</span>
+            <button id="crafting-close-btn" class="close-btn">&times;</button>
+          </div>
+          <div id="craft-list" class="craft-list"></div>
+        </div>
+      </div>
+
+      <div id="worldmap-modal" class="modal">
+        <div class="modal-box map-box">
+          <div class="modal-header">
+            <span>World Map</span>
+            <button id="worldmap-close-btn" class="close-btn">&times;</button>
+          </div>
+          <div id="worldmap-stage" class="worldmap-stage">
+            <canvas id="worldmap-canvas" width="300" height="300"></canvas>
+            <div id="worldmap-markers" class="worldmap-markers"></div>
+          </div>
+          <p id="worldmap-status" class="modal-hint"></p>
+        </div>
+      </div>
+
+      <div id="battle-screen" class="battle-screen">
+        <div id="battle-crit-banner" class="battle-crit-banner">CRITICAL HIT!</div>
+        <div id="battle-enemies" class="battle-enemies">
+          <div id="battle-enemy-slot-0" class="battle-enemy-slot">
+            <div id="battle-enemy-icon-0" class="battle-enemy-icon"></div>
+            <div id="battle-enemy-name-0" class="battle-enemy-name"></div>
+            <div class="stat-bar-row battle-enemy-stat">
+              <span class="stat-label">HP</span>
+              <div class="stat-bar hp battle-enemy-bar"><div id="battle-enemy-hp-bar-0" class="stat-bar-fill"></div></div>
+              <span id="battle-enemy-hp-text-0" class="stat-value"></span>
+            </div>
+            <div class="stat-bar-row battle-enemy-stat">
+              <span class="stat-label">MP</span>
+              <div class="stat-bar mp battle-enemy-bar"><div id="battle-enemy-mp-bar-0" class="stat-bar-fill"></div></div>
+              <span id="battle-enemy-mp-text-0" class="stat-value"></span>
+            </div>
+            <div id="battle-enemy-statuses-0" class="status-badges"></div>
+          </div>
+          <div id="battle-enemy-slot-1" class="battle-enemy-slot">
+            <div id="battle-enemy-icon-1" class="battle-enemy-icon"></div>
+            <div id="battle-enemy-name-1" class="battle-enemy-name"></div>
+            <div class="stat-bar-row battle-enemy-stat">
+              <span class="stat-label">HP</span>
+              <div class="stat-bar hp battle-enemy-bar"><div id="battle-enemy-hp-bar-1" class="stat-bar-fill"></div></div>
+              <span id="battle-enemy-hp-text-1" class="stat-value"></span>
+            </div>
+            <div class="stat-bar-row battle-enemy-stat">
+              <span class="stat-label">MP</span>
+              <div class="stat-bar mp battle-enemy-bar"><div id="battle-enemy-mp-bar-1" class="stat-bar-fill"></div></div>
+              <span id="battle-enemy-mp-text-1" class="stat-value"></span>
+            </div>
+            <div id="battle-enemy-statuses-1" class="status-badges"></div>
+          </div>
+          <div id="battle-enemy-slot-2" class="battle-enemy-slot">
+            <div id="battle-enemy-icon-2" class="battle-enemy-icon"></div>
+            <div id="battle-enemy-name-2" class="battle-enemy-name"></div>
+            <div class="stat-bar-row battle-enemy-stat">
+              <span class="stat-label">HP</span>
+              <div class="stat-bar hp battle-enemy-bar"><div id="battle-enemy-hp-bar-2" class="stat-bar-fill"></div></div>
+              <span id="battle-enemy-hp-text-2" class="stat-value"></span>
+            </div>
+            <div class="stat-bar-row battle-enemy-stat">
+              <span class="stat-label">MP</span>
+              <div class="stat-bar mp battle-enemy-bar"><div id="battle-enemy-mp-bar-2" class="stat-bar-fill"></div></div>
+              <span id="battle-enemy-mp-text-2" class="stat-value"></span>
+            </div>
+            <div id="battle-enemy-statuses-2" class="status-badges"></div>
+          </div>
+        </div>
+        <div id="battle-victory-label" class="battle-victory"></div>
+        <div id="battle-log" class="battle-log"></div>
+        <div id="battle-status" class="battle-status">
+          <div class="battle-status-name">Oliver</div>
+          <div class="stat-bar-row">
+            <span class="stat-label">HP</span>
+            <div class="stat-bar hp"><div id="battle-hp-bar" class="stat-bar-fill"></div></div>
+            <span id="battle-hp-text" class="stat-value"></span>
+          </div>
+          <div class="stat-bar-row">
+            <span class="stat-label">MP</span>
+            <div class="stat-bar mp"><div id="battle-mp-bar" class="stat-bar-fill"></div></div>
+            <span id="battle-mp-text" class="stat-value"></span>
+          </div>
+          <div id="battle-player-statuses" class="status-badges"></div>
+        </div>
+        <div class="battle-commands" id="battle-commands">
+          <button id="battle-attack-btn" class="craft-btn">Attack</button>
+          <button id="battle-magic-btn" class="craft-btn">Magic</button>
+          <button id="battle-item-btn" class="craft-btn">Item</button>
+          <button id="battle-defend-btn" class="craft-btn">Defend</button>
+          <button id="battle-run-btn" class="craft-btn battle-run-btn">Run</button>
+        </div>
+        <div id="battle-submenu" class="battle-submenu"></div>
+        <button id="battle-continue-btn" class="upgrade-btn">Continue</button>
+      </div>
+    </div>
+    <p id="help">Move: <b>W A S D</b> &nbsp;|&nbsp; Gather / Interact: <b>E</b> &nbsp;|&nbsp; Inventory: <b>I</b> &nbsp;|&nbsp; Character: <b>C</b> &nbsp;|&nbsp; Crafting: <b>R</b> &nbsp;|&nbsp; Map: <b>M</b></p>
+  </div>
+  <script src="items.js"></script>
+  <script src="character.js"></script>
+  <script src="container.js"></script>
+  <script src="inventory.js"></script>
+  <script src="storage.js"></script>
+  <script src="crafting.js"></script>
+  <script src="worldmap.js"></script>
+  <script src="enemies.js"></script>
+  <script src="spells.js"></script>
+  <script src="statuses.js"></script>
+  <script src="combat.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
