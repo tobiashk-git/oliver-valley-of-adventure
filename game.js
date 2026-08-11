@@ -38,6 +38,7 @@ const T = {
   DUNGEON_ENTRANCE: 20,
   CASTLE_ENTRANCE: 21,
   BOSS: 22,
+  HOUSE_ENTRANCE: 23,
 };
 
 const SOLID_TILES = new Set([
@@ -54,6 +55,7 @@ const SOLID_TILES = new Set([
   T.DUNGEON_ENTRANCE,
   T.CASTLE_ENTRANCE,
   T.BOSS,
+  T.HOUSE_ENTRANCE,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -71,6 +73,7 @@ const ENCOUNTER_ELIGIBLE_TILES = new Set([
 // Fixed points of interest on the overworld map.
 const DUNGEON_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y - 30 };
 const CASTLE_ENTRANCE = { x: WORLD_CENTER_X + 35, y: WORLD_CENTER_Y };
+const HOUSE_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y };
 
 // Which cardinal zone a tile belongs to: a central valley, surrounded by four
 // wedge-shaped biomes (snow north, desert south, forest west, hills east).
@@ -117,37 +120,10 @@ function buildOverworld() {
     map.push(row);
   }
 
-  // house rectangle, centered in the map
-  const houseW = 9;
-  const houseH = 7;
-  const hx = Math.floor((width - houseW) / 2);
-  const hy = Math.floor((height - houseH) / 2);
-
-  for (let y = hy; y < hy + houseH; y++) {
-    for (let x = hx; x < hx + houseW; x++) {
-      const isBorder = y === hy || y === hy + houseH - 1 || x === hx || x === hx + houseW - 1;
-      map[y][x] = isBorder ? T.WALL : T.FLOOR;
-    }
-  }
-
-  // door gap at the bottom center of the house
-  const doorX = hx + Math.floor(houseW / 2);
-  map[hy + houseH - 1][doorX] = T.DOOR;
-  // small path leading away from the door
-  map[hy + houseH][doorX] = T.PATH;
-
-  // chest in the near corner of the house interior
-  const chestX = hx + 1;
-  const chestY = hy + 1;
-  map[chestY][chestX] = T.CHEST;
-
   const resources = new Map(); // key "x,y" -> {itemId, amount}
 
-  // scatter trees and rocks in the valley, avoiding the house footprint
-  function inHouse(x, y) {
-    return x >= hx - 1 && x <= hx + houseW && y >= hy - 1 && y <= hy + houseH;
-  }
-  const isValleyGrass = (x, y) => !inHouse(x, y) && map[y][x] === T.GRASS;
+  // scatter trees and rocks across the valley
+  const isValleyGrass = (x, y) => map[y][x] === T.GRASS;
   const isZoneGround = (zone, ground) => (x, y) => biomeAt(x, y).zone === zone && map[y][x] === ground;
 
   // Places `count` resource nodes of `tileType`/`itemId` at random tiles that satisfy isValidTile(x, y).
@@ -179,18 +155,18 @@ function buildOverworld() {
   // points of interest
   resources.delete(key(DUNGEON_ENTRANCE.x, DUNGEON_ENTRANCE.y));
   resources.delete(key(CASTLE_ENTRANCE.x, CASTLE_ENTRANCE.y));
+  resources.delete(key(HOUSE_ENTRANCE.x, HOUSE_ENTRANCE.y));
   map[DUNGEON_ENTRANCE.y][DUNGEON_ENTRANCE.x] = T.DUNGEON_ENTRANCE;
   map[CASTLE_ENTRANCE.y][CASTLE_ENTRANCE.x] = T.CASTLE_ENTRANCE;
+  map[HOUSE_ENTRANCE.y][HOUSE_ENTRANCE.x] = T.HOUSE_ENTRANCE;
 
   return {
     map,
     width,
     height,
     resources,
-    chestTiles: [{ x: chestX, y: chestY, storageId: "house_chest" }],
-    portals: [], // linked to dungeon/castle interiors after they're built
-    playerStart: { x: (hx + houseW / 2) * TILE, y: (hy + houseH / 2) * TILE },
-    houseCenterTile: { x: hx + Math.floor(houseW / 2), y: hy + Math.floor(houseH / 2) },
+    chestTiles: [],
+    portals: [], // linked to dungeon/castle/house interiors after they're built
   };
 }
 
@@ -265,6 +241,19 @@ const castleLevel = buildInterior({
   boss: { x: 5, y: 2, bossId: "castle_boss" },
 });
 
+// A safe interior, like the dungeon/castle but with no chests-with-gold (the
+// house chest is the player's own pre-existing storage, added below rather
+// than through `chests`, which would gold-fill a fresh one) and no boss.
+const houseLevel = buildInterior({
+  width: 11,
+  height: 9,
+  wallTile: T.WALL,
+  floorTile: T.FLOOR,
+  chests: [],
+});
+houseLevel.map[2][2] = T.CHEST;
+houseLevel.chestTiles.push({ x: 2, y: 2, storageId: "house_chest" });
+
 // link the overworld entrances to their interiors, and each interior's door back out
 overworldLevel.portals.push(
   {
@@ -283,6 +272,14 @@ overworldLevel.portals.push(
     toY: castleLevel.spawnY,
     label: "enter the Castle",
   },
+  {
+    x: HOUSE_ENTRANCE.x,
+    y: HOUSE_ENTRANCE.y,
+    toLevelId: "house",
+    toX: houseLevel.spawnX,
+    toY: houseLevel.spawnY,
+    label: "enter the House",
+  },
 );
 dungeonLevel.portals.push({
   x: dungeonLevel.doorX,
@@ -300,8 +297,16 @@ castleLevel.portals.push({
   toY: (CASTLE_ENTRANCE.y + 1) * TILE + TILE / 2,
   label: "leave the Castle",
 });
+houseLevel.portals.push({
+  x: houseLevel.doorX,
+  y: houseLevel.doorY,
+  toLevelId: "overworld",
+  toX: HOUSE_ENTRANCE.x * TILE + TILE / 2,
+  toY: (HOUSE_ENTRANCE.y + 1) * TILE + TILE / 2,
+  label: "leave the House",
+});
 
-const levels = { overworld: overworldLevel, dungeon: dungeonLevel, castle: castleLevel };
+const levels = { overworld: overworldLevel, dungeon: dungeonLevel, castle: castleLevel, house: houseLevel };
 
 // Checkpoint state: once a boss is beaten it never fights again.
 const bossDefeated = { dungeon_boss: false, castle_boss: false };
@@ -341,7 +346,7 @@ const player = {
   dir: "down", // facing direction, for rendering
 };
 
-activateLevel("overworld", overworldLevel.playerStart.x, overworldLevel.playerStart.y);
+activateLevel("house", houseLevel.spawnX, houseLevel.spawnY);
 
 const keys = new Set();
 
@@ -596,6 +601,7 @@ function baseTileFor(t) {
   if (t === T.JEWEL) return T.HILLS_GROUND;
   if (t === T.DUNGEON_ENTRANCE) return T.SNOW;
   if (t === T.CASTLE_ENTRANCE) return T.HILLS_GROUND;
+  if (t === T.HOUSE_ENTRANCE) return T.GRASS;
   return t;
 }
 
@@ -818,6 +824,13 @@ function drawBoss(px, py) {
   ctx.restore();
 }
 
+function drawHouseEntrance(px, py) {
+  ctx.font = "22px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🏠", px + TILE / 2, py + TILE / 2 + 1);
+}
+
 const TILE_SPRITES = {
   [T.TREE]: drawTree,
   [T.ROCK]: drawRock,
@@ -829,6 +842,7 @@ const TILE_SPRITES = {
   [T.FLOWER]: drawFlower,
   [T.JEWEL]: drawJewel,
   [T.BOSS]: drawBoss,
+  [T.HOUSE_ENTRANCE]: drawHouseEntrance,
 };
 
 function drawPlayer(px, py) {

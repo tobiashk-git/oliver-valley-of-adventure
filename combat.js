@@ -180,7 +180,7 @@ function handleDefeat() {
   character.hp = character.maxHp;
   character.mp = character.maxMp;
   playerStatus = {};
-  activateLevel("overworld", overworldLevel.playerStart.x, overworldLevel.playerStart.y);
+  activateLevel("house", houseLevel.spawnX, houseLevel.spawnY);
   endCombat();
   renderCharacterPanel();
 }

@@ -30,7 +30,7 @@ function buildMinimapImage() {
 
 function worldMapPOIs() {
   return [
-    { id: "house", name: "House", x: overworldLevel.houseCenterTile.x, y: overworldLevel.houseCenterTile.y, icon: "🏠" },
+    { id: "house", name: "House", x: HOUSE_ENTRANCE.x, y: HOUSE_ENTRANCE.y, icon: "🏠" },
     { id: "dungeon", name: "Dungeon", x: DUNGEON_ENTRANCE.x, y: DUNGEON_ENTRANCE.y, icon: "⛰️" },
     { id: "castle", name: "Castle", x: CASTLE_ENTRANCE.x, y: CASTLE_ENTRANCE.y, icon: "🏰" },
   ];
@@ -42,12 +42,13 @@ function playerOverworldTile() {
   if (currentLevelId === "overworld") return { x: player.x / TILE, y: player.y / TILE };
   if (currentLevelId === "dungeon") return DUNGEON_ENTRANCE;
   if (currentLevelId === "castle") return CASTLE_ENTRANCE;
+  if (currentLevelId === "house") return HOUSE_ENTRANCE;
   return { x: WORLD_CENTER_X, y: WORLD_CENTER_Y };
 }
 
 function travelTo(poiId) {
   if (poiId === "house") {
-    activateLevel("overworld", overworldLevel.playerStart.x, overworldLevel.playerStart.y);
+    activateLevel("overworld", HOUSE_ENTRANCE.x * TILE + TILE / 2, (HOUSE_ENTRANCE.y + 1) * TILE + TILE / 2);
   } else if (poiId === "dungeon") {
     activateLevel("overworld", DUNGEON_ENTRANCE.x * TILE + TILE / 2, (DUNGEON_ENTRANCE.y + 1) * TILE + TILE / 2);
   } else if (poiId === "castle") {
@@ -81,7 +82,13 @@ function renderWorldMap() {
   markersEl.appendChild(playerDot);
 
   const statusLabel =
-    currentLevelId === "overworld" ? "the Valley" : currentLevelId === "dungeon" ? "the Dungeon" : "the Castle";
+    currentLevelId === "overworld"
+      ? "the Valley"
+      : currentLevelId === "dungeon"
+        ? "the Dungeon"
+        : currentLevelId === "castle"
+          ? "the Castle"
+          : "your House";
   document.getElementById("worldmap-status").textContent = `You are in ${statusLabel}`;
 }
 
