@@ -1038,31 +1038,48 @@ canvas {
 }
 
 @media (hover: none) and (pointer: coarse) {
+  body {
+    overflow: hidden;
+  }
+
   #title,
   #help {
     display: none;
+  }
+
+  /* Fill the screen edge-to-edge and clip whatever #stage's cover-fit zoom
+     (see fitStage() in game.js) pushes past the viewport bounds, instead of
+     the normal-flow layout that leaves a small letterboxed game floating in
+     the middle of the page. */
+  #game-wrap {
+    position: fixed;
+    inset: 0;
+    justify-content: center;
+    overflow: hidden;
   }
 
   .touch-controls {
     display: block;
   }
 
-  /* Panels/modals live inside #stage, which is zoomed down on small screens
-     along with everything else — including these, since fixed-position
-     elements aren't immune to an ancestor zoom any more than they're immune
-     to the browser's own page zoom. Counteract it directly instead:
-     `fitStage()` publishes the inverse as `--inv-stage-scale`, and
-     re-applying it here renders these back at their originally-authored
-     native size regardless of how small #stage itself has shrunk. No-op on
-     desktop, where the scale (and this variable) is 1. */
+  /* Panels/modals live inside #stage, which is zoomed on small screens along
+     with everything else — including these, since fixed-position elements
+     aren't immune to an ancestor zoom any more than they're immune to the
+     browser's own page zoom. Counteract it directly instead: `fitStage()`
+     publishes the inverse as `--inv-stage-scale`, and re-applying it here
+     renders these back at their originally-authored native size regardless
+     of how much #stage itself has shrunk (or, on touch, grown past the
+     screen edges to fill it — see the cover-fit comment in fitStage()). No-op
+     on desktop, where the scale (and this variable) is 1.
+
+     Character/Inventory are also recentered here rather than kept in their
+     desktop top-left/top-right corners: those corners are anchored to
+     #stage's own edges, which the cover-fit zoom now pushes off-screen. */
   .panel.open {
-    transform: scale(var(--inv-stage-scale, 1));
-  }
-  #character-panel.open {
-    transform-origin: top left;
-  }
-  #inventory-panel.open {
-    transform-origin: top right;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translate(-50%, -50%) scale(var(--inv-stage-scale, 1));
   }
 
   .modal-box {

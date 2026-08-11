@@ -947,8 +947,14 @@ const stageEl = document.getElementById("stage");
 const STAGE_W = 800;
 const STAGE_H = 600;
 const STAGE_BORDER = 8; // 4px border on each side (see #stage in style.css)
+const TOUCH_COVER_MAX_SCALE = 1.8; // sane ceiling on how far cover-fit can zoom in
+
+function isTouchDevice() {
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
 
 function fitStage() {
+  const touch = isTouchDevice();
   const wrap = document.getElementById("game-wrap");
   const reserved = wrap.querySelectorAll(":scope > *:not(#stage)");
   let reservedHeight = 0;
@@ -956,9 +962,22 @@ function fitStage() {
     if (getComputedStyle(el).display !== "none") reservedHeight += el.offsetHeight;
   });
 
-  const availW = window.innerWidth - 16; // small side margin
-  const availH = window.innerHeight - reservedHeight - 16;
-  const scale = Math.min(1, availW / (STAGE_W + STAGE_BORDER), availH / (STAGE_H + STAGE_BORDER));
+  // Touch layout goes edge-to-edge (see the mobile media query in style.css,
+  // which makes #game-wrap fill the viewport with overflow:hidden), so
+  // there's no title/help to reserve room for and no side margin needed.
+  const availW = touch ? window.innerWidth : window.innerWidth - 16;
+  const availH = touch ? window.innerHeight : window.innerHeight - reservedHeight - 16;
+
+  // Desktop: "contain" — shrink to fit entirely on screen, never cropping.
+  // Touch: "cover" — fill the screen edge-to-edge, cropping the excess
+  // dimension (here, the sides) rather than leaving the 4:3 canvas
+  // letterboxed inside a tall phone screen. A landscape-shaped canvas can
+  // never exactly fill a portrait screen either way; cover reads as "the
+  // game fills my phone," contain reads as "a small game floats in the
+  // middle of my phone" — cover is the better trade-off for a phone browser.
+  const scale = touch
+    ? Math.min(TOUCH_COVER_MAX_SCALE, Math.max(availW / (STAGE_W + STAGE_BORDER), availH / (STAGE_H + STAGE_BORDER)))
+    : Math.min(1, availW / (STAGE_W + STAGE_BORDER), availH / (STAGE_H + STAGE_BORDER));
 
   // `zoom` (unlike `transform: scale`) actually resizes #stage's layout box,
   // so #game-wrap's flex centering correctly centers the *rendered* size
@@ -976,6 +995,7 @@ function fitStage() {
 
 window.addEventListener("resize", fitStage);
 window.addEventListener("orientationchange", fitStage);
+document.addEventListener("fullscreenchange", fitStage);
 if (window.visualViewport) window.visualViewport.addEventListener("resize", fitStage);
 fitStage();
 // Mobile browsers can report a transient viewport size before their address

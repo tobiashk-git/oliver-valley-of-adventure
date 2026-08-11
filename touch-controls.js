@@ -100,5 +100,24 @@ function setupTouchButtons() {
   });
 }
 
+// Hides the mobile browser's own chrome (address bar etc.) for a more
+// immersive, app-like view. Requires a user gesture to invoke, so it's a
+// toggle button rather than something triggered automatically on load.
+function setupFullscreenToggle() {
+  document.getElementById("touch-fullscreen-btn").addEventListener(
+    "touchstart",
+    (e) => {
+      e.preventDefault();
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    },
+    { passive: false }
+  );
+}
+
 setupJoystick();
 setupTouchButtons();
+setupFullscreenToggle();
