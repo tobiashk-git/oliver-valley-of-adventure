@@ -540,6 +540,7 @@ canvas {
   padding: 24px 20px 16px;
   background: radial-gradient(ellipse at 50% 30%, #3a2f28 0%, #14100c 75%);
   z-index: 10;
+  overflow-y: auto; /* scroll rather than silently shrink/clip a child if content ever exceeds the fixed 600px stage height */
 }
 
 .battle-screen.open {
@@ -625,7 +626,21 @@ canvas {
 .battle-log {
   width: 340px;
   max-width: 90%;
-  min-height: 78px;
+  /* Fixed height + scroll, not min-height auto-grow: `.battle-screen`'s
+     children (enemies row + log + status + commands) don't always fit
+     within the stage's fixed 600px height, especially on mobile where the
+     enemies row can be tall. Per the flexbox spec, an `overflow` other than
+     `visible` drops a flex item's automatic "don't shrink below content"
+     floor to 0 — so whenever the column ran out of room, this was the item
+     silently getting crushed by flex-shrink to make space for its siblings
+     (worse the fuller the log got, which is exactly why it looked fine again
+     once combat ended and the command buttons disappeared, freeing up room).
+     flex-shrink: 0 below stops that; overflow-y here plus on .battle-screen
+     itself means anything that still doesn't fit is reachable by scrolling
+     instead of silently disappearing. */
+  height: 170px;
+  overflow-y: auto;
+  flex-shrink: 0;
   margin-top: 20px;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid #4a4032;
@@ -635,7 +650,6 @@ canvas {
   color: #d8d0c0;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 2px;
 }
 
