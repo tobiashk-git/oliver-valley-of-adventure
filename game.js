@@ -39,6 +39,7 @@ const T = {
   CASTLE_ENTRANCE: 21,
   BOSS: 22,
   HOUSE_ENTRANCE: 23,
+  VILLAGE_GROUND: 24,
 };
 
 const SOLID_TILES = new Set([
@@ -74,6 +75,23 @@ const ENCOUNTER_ELIGIBLE_TILES = new Set([
 const DUNGEON_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y - 30 };
 const CASTLE_ENTRANCE = { x: WORLD_CENTER_X + 35, y: WORLD_CENTER_Y };
 const HOUSE_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y };
+
+// A small safe, resource-free village square around the house. Bounds stamped
+// as T.VILLAGE_GROUND before resources scatter (so nothing can spawn inside),
+// and never added to ENCOUNTER_ELIGIBLE_TILES (so it's safe with no extra
+// "zone" logic needed). The 3 houses are empty for now — future function
+// (trader, quest giver, etc.) hangs off these same ids later.
+const VILLAGE_BOUNDS = {
+  x0: WORLD_CENTER_X - 8,
+  x1: WORLD_CENTER_X + 8,
+  y0: WORLD_CENTER_Y - 6,
+  y1: WORLD_CENTER_Y + 6,
+};
+const VILLAGE_HOUSES = [
+  { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2 },
+  { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2 },
+  { id: "village_house_3", x: WORLD_CENTER_X, y: WORLD_CENTER_Y + 4 },
+];
 
 // Which cardinal zone a tile belongs to: a central valley, surrounded by four
 // wedge-shaped biomes (snow north, desert south, forest west, hills east).
@@ -120,6 +138,13 @@ function buildOverworld() {
     map.push(row);
   }
 
+  // village square: stamped before resources scatter, so nothing can spawn on it
+  for (let y = VILLAGE_BOUNDS.y0; y <= VILLAGE_BOUNDS.y1; y++) {
+    for (let x = VILLAGE_BOUNDS.x0; x <= VILLAGE_BOUNDS.x1; x++) {
+      map[y][x] = T.VILLAGE_GROUND;
+    }
+  }
+
   const resources = new Map(); // key "x,y" -> {itemId, amount}
 
   // scatter trees and rocks across the valley
@@ -159,6 +184,9 @@ function buildOverworld() {
   map[DUNGEON_ENTRANCE.y][DUNGEON_ENTRANCE.x] = T.DUNGEON_ENTRANCE;
   map[CASTLE_ENTRANCE.y][CASTLE_ENTRANCE.x] = T.CASTLE_ENTRANCE;
   map[HOUSE_ENTRANCE.y][HOUSE_ENTRANCE.x] = T.HOUSE_ENTRANCE;
+  for (const house of VILLAGE_HOUSES) {
+    map[house.y][house.x] = T.HOUSE_ENTRANCE;
+  }
 
   return {
     map,
@@ -306,7 +334,38 @@ houseLevel.portals.push({
   label: "leave the House",
 });
 
-const levels = { overworld: overworldLevel, dungeon: dungeonLevel, castle: castleLevel, house: houseLevel };
+// The 3 other houses in the village — empty rooms for now (see VILLAGE_HOUSES),
+// built and wired with the identical house/dungeon/castle portal pattern.
+const villageHouseLevels = {};
+VILLAGE_HOUSES.forEach((house, i) => {
+  const label = `House ${i + 2}`; // "House 1" is implicitly Oliver's own
+  const level = buildInterior({ width: 9, height: 7, wallTile: T.WALL, floorTile: T.FLOOR, chests: [] });
+  overworldLevel.portals.push({
+    x: house.x,
+    y: house.y,
+    toLevelId: house.id,
+    toX: level.spawnX,
+    toY: level.spawnY,
+    label: `enter ${label}`,
+  });
+  level.portals.push({
+    x: level.doorX,
+    y: level.doorY,
+    toLevelId: "overworld",
+    toX: house.x * TILE + TILE / 2,
+    toY: (house.y + 1) * TILE + TILE / 2,
+    label: `leave ${label}`,
+  });
+  villageHouseLevels[house.id] = level;
+});
+
+const levels = {
+  overworld: overworldLevel,
+  dungeon: dungeonLevel,
+  castle: castleLevel,
+  house: houseLevel,
+  ...villageHouseLevels,
+};
 
 // Checkpoint state: once a boss is beaten it never fights again.
 const bossDefeated = { dungeon_boss: false, castle_boss: false };
@@ -601,7 +660,7 @@ function baseTileFor(t) {
   if (t === T.JEWEL) return T.HILLS_GROUND;
   if (t === T.DUNGEON_ENTRANCE) return T.SNOW;
   if (t === T.CASTLE_ENTRANCE) return T.HILLS_GROUND;
-  if (t === T.HOUSE_ENTRANCE) return T.GRASS;
+  if (t === T.HOUSE_ENTRANCE) return T.VILLAGE_GROUND;
   return t;
 }
 
@@ -631,6 +690,8 @@ function tileColor(t) {
       return "#8a7a5a";
     case T.CASTLE_FLOOR:
       return "#d9c9a0";
+    case T.VILLAGE_GROUND:
+      return "#cbb27e";
     default:
       return "#4a7c3a";
   }
