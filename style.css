@@ -1088,4 +1088,44 @@ canvas {
     overflow-y: auto;
     transform: scale(var(--inv-stage-scale, 1));
   }
+
+  /* The cover-fit zoom (see fitStage() in game.js) only guarantees roughly
+     the center ~280-300 logical px of #stage's 800px width stays visible —
+     the rest is cropped off both sides to fill the screen vertically. These
+     elements were sized assuming the full 800px canvas was always visible
+     (true on desktop, which always "contains" rather than crops), so on
+     touch they need to fit that narrower safe zone instead. */
+  .battle-log,
+  .battle-commands,
+  .battle-submenu {
+    width: 260px;
+  }
+
+  /* Keep enemy slots in a single row rather than letting them wrap: with 2-3
+     enemies, wrapping stacks their cards vertically and pushes the command
+     buttons below the bottom of the screen with no way to scroll to them
+     (scrolling is disabled above). Shrinking each slot to fit 3 across is
+     the safe option — still bigger on-screen than desktop's own slots,
+     since everything here renders through the same ambient cover-fit zoom. */
+  .battle-enemies {
+    width: 260px;
+    max-width: 260px;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .battle-enemy-slot {
+    padding: 2px;
+  }
+  .battle-enemy-icon {
+    font-size: 32px;
+  }
+  .battle-enemy-name {
+    font-size: 9px;
+  }
+  .battle-enemy-stat {
+    width: 76px;
+  }
+  .battle-enemy-bar {
+    width: 40px;
+  }
 }
