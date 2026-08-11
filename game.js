@@ -936,3 +936,40 @@ requestAnimationFrame((now) => {
   lastTime = now;
   requestAnimationFrame(loop);
 });
+
+// ---------------------------------------------------------------------------
+// Responsive scaling — the canvas keeps rendering at its native 800x600
+// internally; this just visually scales the whole #stage (canvas + every
+// absolutely-positioned overlay panel on top of it) down to fit small screens.
+// ---------------------------------------------------------------------------
+
+const stageEl = document.getElementById("stage");
+const STAGE_W = 800;
+const STAGE_H = 600;
+const STAGE_BORDER = 8; // 4px border on each side (see #stage in style.css)
+
+function fitStage() {
+  const wrap = document.getElementById("game-wrap");
+  const reserved = wrap.querySelectorAll(":scope > *:not(#stage)");
+  let reservedHeight = 0;
+  reserved.forEach((el) => {
+    if (getComputedStyle(el).display !== "none") reservedHeight += el.offsetHeight;
+  });
+
+  const availW = window.innerWidth - 16; // small side margin
+  const availH = window.innerHeight - reservedHeight - 16;
+  const scale = Math.min(1, availW / (STAGE_W + STAGE_BORDER), availH / (STAGE_H + STAGE_BORDER));
+
+  stageEl.style.transform = `scale(${scale})`;
+  // Lets panels/modals (inside #stage) counteract this scale — see the
+  // touch media query in style.css for why that's needed.
+  document.documentElement.style.setProperty("--inv-stage-scale", 1 / scale);
+}
+
+window.addEventListener("resize", fitStage);
+window.addEventListener("orientationchange", fitStage);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", fitStage);
+fitStage();
+// Mobile browsers can report a transient viewport size before their address
+// bar/chrome finishes settling right after load — recheck shortly after.
+setTimeout(fitStage, 300);

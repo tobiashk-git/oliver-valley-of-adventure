@@ -33,6 +33,7 @@ body {
   border: 4px solid #3d2b1f;
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  transform-origin: top center;
 }
 
 canvas {
@@ -966,4 +967,113 @@ canvas {
   font-size: 10px;
   color: #d8d0c0;
   font-weight: bold;
+}
+
+/* ---------------------------------------------------------------------------
+   Touch controls — a fixed-position layer over the viewport, independent of
+   #stage's responsive scale transform so buttons stay a comfortable native
+   size no matter how small the game view shrinks. Hidden by default; only
+   shown on touch devices via the media query below.
+--------------------------------------------------------------------------- */
+
+.touch-controls {
+  display: none;
+}
+
+.touch-joystick {
+  position: fixed;
+  left: 24px;
+  bottom: 24px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(20, 15, 10, 0.45);
+  border: 2px solid rgba(232, 195, 104, 0.5);
+  touch-action: none;
+  z-index: 50;
+}
+
+.touch-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  background: rgba(232, 195, 104, 0.85);
+  transition: transform 0.05s linear;
+}
+
+.touch-interact-btn {
+  position: fixed;
+  right: 28px;
+  bottom: 32px;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(232, 195, 104, 0.85);
+  border: 2px solid #3d2b1f;
+  color: #1b1b1b;
+  font-size: 22px;
+  font-weight: bold;
+  z-index: 50;
+}
+
+.touch-panel-buttons {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 50;
+}
+
+.touch-panel-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(20, 15, 10, 0.75);
+  border: 2px solid #3d2b1f;
+  font-size: 18px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  #title,
+  #help {
+    display: none;
+  }
+
+  .touch-controls {
+    display: block;
+  }
+
+  /* Panels/modals live inside #stage, so they scale down along with it on
+     small screens — too small to comfortably read/tap. #stage's `transform`
+     makes it the containing block for any `position: fixed` descendant too
+     (a CSS quirk: a transformed ancestor always becomes the containing block
+     for fixed/absolute children), so escaping via `position: fixed` alone
+     doesn't work here — the descendant still gets painted through #stage's
+     scale. Instead, counteract that scale directly: `fitStage()` publishes
+     the inverse as `--inv-stage-scale` on the root, and re-applying it here
+     renders these elements back at their originally-authored native size
+     regardless of how small #stage itself has shrunk. No-op on desktop,
+     where the scale (and therefore this variable) is 1.
+  */
+  .panel.open {
+    transform: scale(var(--inv-stage-scale, 1));
+  }
+  #character-panel.open {
+    transform-origin: top left;
+  }
+  #inventory-panel.open {
+    transform-origin: top right;
+  }
+
+  .modal-box {
+    max-width: min(560px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    transform: scale(var(--inv-stage-scale, 1));
+  }
 }

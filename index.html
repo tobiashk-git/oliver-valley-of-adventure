@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Oliver in the Valley of Adventure</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -188,6 +189,19 @@
       </div>
     </div>
     <p id="help">Move: <b>W A S D</b> &nbsp;|&nbsp; Gather / Interact: <b>E</b> &nbsp;|&nbsp; Inventory: <b>I</b> &nbsp;|&nbsp; Character: <b>C</b> &nbsp;|&nbsp; Crafting: <b>R</b> &nbsp;|&nbsp; Map: <b>M</b></p>
+
+    <div id="touch-controls" class="touch-controls">
+      <div id="touch-joystick" class="touch-joystick">
+        <div id="touch-joystick-knob" class="touch-joystick-knob"></div>
+      </div>
+      <button id="touch-interact-btn" class="touch-interact-btn">E</button>
+      <div class="touch-panel-buttons">
+        <button id="touch-inv-btn" class="touch-panel-btn" title="Inventory">🎒</button>
+        <button id="touch-char-btn" class="touch-panel-btn" title="Character">👤</button>
+        <button id="touch-craft-btn" class="touch-panel-btn" title="Crafting">🔨</button>
+        <button id="touch-map-btn" class="touch-panel-btn" title="Map">🗺️</button>
+      </div>
+    </div>
   </div>
   <script src="items.js"></script>
   <script src="character.js"></script>
@@ -201,5 +215,6 @@
   <script src="statuses.js"></script>
   <script src="combat.js"></script>
   <script src="game.js"></script>
+  <script src="touch-controls.js"></script>
 </body>
 </html>
