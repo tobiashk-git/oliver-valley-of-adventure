@@ -882,9 +882,28 @@ function drawPlayer(px, py) {
   }
 }
 
+// Interior levels (house/dungeon/castle) are all smaller than the 800x600
+// view, so clamping the camera to stay within map bounds always resolves to
+// 0 (pinning the map to the top-left) rather than centering it — center it
+// directly instead whenever the map doesn't fill the view. Shared by render()
+// and combat.js's on-map encounter marker, which needs the same camera the
+// world is actually drawn with.
+function getCamera() {
+  const camX = Math.round(
+    MAP_W * TILE <= VIEW_W
+      ? (MAP_W * TILE - VIEW_W) / 2
+      : Math.max(0, Math.min(MAP_W * TILE - VIEW_W, player.x - VIEW_W / 2))
+  );
+  const camY = Math.round(
+    MAP_H * TILE <= VIEW_H
+      ? (MAP_H * TILE - VIEW_H) / 2
+      : Math.max(0, Math.min(MAP_H * TILE - VIEW_H, player.y - VIEW_H / 2))
+  );
+  return { camX, camY };
+}
+
 function render() {
-  const camX = Math.round(Math.max(0, Math.min(MAP_W * TILE - VIEW_W, player.x - VIEW_W / 2)));
-  const camY = Math.round(Math.max(0, Math.min(MAP_H * TILE - VIEW_H, player.y - VIEW_H / 2)));
+  const { camX, camY } = getCamera();
 
   ctx.fillStyle = "#111";
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);

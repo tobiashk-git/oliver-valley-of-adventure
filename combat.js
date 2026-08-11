@@ -221,8 +221,7 @@ function beginEncounterAppearance() {
 }
 
 function positionEncounterMarker() {
-  const camX = Math.round(Math.max(0, Math.min(MAP_W * TILE - VIEW_W, player.x - VIEW_W / 2)));
-  const camY = Math.round(Math.max(0, Math.min(MAP_H * TILE - VIEW_H, player.y - VIEW_H / 2)));
+  const { camX, camY } = getCamera();
   const marker = document.getElementById("encounter-marker");
   marker.style.left = `${player.x - camX}px`;
   marker.style.top = `${player.y - camY - 16}px`;
