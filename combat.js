@@ -690,7 +690,9 @@ function renderBattleScreen() {
   document.getElementById("battle-mp-text").textContent = `${character.mp} / ${character.maxMp}`;
   renderStatusBadges("battle-player-statuses", playerStatus);
 
-  document.getElementById("battle-log").innerHTML = battleLog.map((line) => `<div>${line}</div>`).join("");
+  const logEl = document.getElementById("battle-log");
+  logEl.innerHTML = battleLog.map((line) => `<div>${line}</div>`).join("");
+  logEl.scrollTop = logEl.scrollHeight; // always show the newest line by default
 
   const inBattle = hasEnemies && !awaitingVictoryPause && !isResolvingTurn && !selectingTarget;
   document.getElementById("battle-attack-btn").disabled = !inBattle;

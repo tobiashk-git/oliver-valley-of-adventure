@@ -638,7 +638,7 @@ canvas {
      flex-shrink: 0 below stops that; overflow-y here plus on .battle-screen
      itself means anything that still doesn't fit is reachable by scrolling
      instead of silently disappearing. */
-  height: 170px;
+  height: 90px;
   overflow-y: auto;
   flex-shrink: 0;
   margin-top: 20px;
