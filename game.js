@@ -40,6 +40,7 @@ const T = {
   BOSS: 22,
   HOUSE_ENTRANCE: 23,
   VILLAGE_GROUND: 24,
+  NPC: 25,
 };
 
 const SOLID_TILES = new Set([
@@ -57,6 +58,7 @@ const SOLID_TILES = new Set([
   T.CASTLE_ENTRANCE,
   T.BOSS,
   T.HOUSE_ENTRANCE,
+  T.NPC,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -79,8 +81,8 @@ const HOUSE_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y };
 // A small safe, resource-free village square around the house. Bounds stamped
 // as T.VILLAGE_GROUND before resources scatter (so nothing can spawn inside),
 // and never added to ENCOUNTER_ELIGIBLE_TILES (so it's safe with no extra
-// "zone" logic needed). The 3 houses are empty for now — future function
-// (trader, quest giver, etc.) hangs off these same ids later.
+// "zone" logic needed). The other 2 houses are still genuinely empty — future
+// function (trader, a second quest giver, etc.) hangs off these same ids later.
 const VILLAGE_BOUNDS = {
   x0: WORLD_CENTER_X - 8,
   x1: WORLD_CENTER_X + 8,
@@ -88,7 +90,7 @@ const VILLAGE_BOUNDS = {
   y1: WORLD_CENTER_Y + 6,
 };
 const VILLAGE_HOUSES = [
-  { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2 },
+  { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2, npc: "village_elder" },
   { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2 },
   { id: "village_house_3", x: WORLD_CENTER_X, y: WORLD_CENTER_Y + 4 },
 ];
@@ -115,6 +117,7 @@ const stoneCountEl = document.getElementById("stone-count");
 const promptEl = document.getElementById("prompt");
 const characterPanel = document.getElementById("character-panel");
 const inventoryPanel = document.getElementById("inventory-panel");
+const questPanel = document.getElementById("quest-panel");
 const storageModal = document.getElementById("storage-modal");
 
 // ---------------------------------------------------------------------------
@@ -356,6 +359,10 @@ VILLAGE_HOUSES.forEach((house, i) => {
     toY: (house.y + 1) * TILE + TILE / 2,
     label: `leave ${label}`,
   });
+  if (house.npc) {
+    level.map[2][4] = T.NPC;
+    level.npcTile = { x: 4, y: 2, npcId: house.npc };
+  }
   villageHouseLevels[house.id] = level;
 });
 
@@ -371,7 +378,7 @@ const levels = {
 const bossDefeated = { dungeon_boss: false, castle_boss: false };
 
 let currentLevelId = null;
-let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile;
+let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile;
 
 function activateLevel(levelId, spawnX, spawnY) {
   currentLevelId = levelId;
@@ -383,6 +390,7 @@ function activateLevel(levelId, spawnX, spawnY) {
   chestTiles = lvl.chestTiles;
   portals = lvl.portals;
   bossTile = lvl.bossTile;
+  npcTile = lvl.npcTile;
   if (spawnX !== undefined) {
     player.x = spawnX;
     player.y = spawnY;
@@ -432,13 +440,22 @@ window.addEventListener("keydown", (e) => {
           openStorage(chest.storageId);
         }
       } else {
-        const boss = nearestBoss();
-        if (boss) {
-          startBossFight(boss.bossId);
+        const npc = nearestNPC();
+        if (npc) {
+          if (isDialogueOpen()) {
+            closeDialogue();
+          } else {
+            openDialogue(npc.npcId);
+          }
         } else {
-          const portal = nearestPortal();
-          if (portal) {
-            activateLevel(portal.toLevelId, portal.toX, portal.toY);
+          const boss = nearestBoss();
+          if (boss) {
+            startBossFight(boss.bossId);
+          } else {
+            const portal = nearestPortal();
+            if (portal) {
+              activateLevel(portal.toLevelId, portal.toX, portal.toY);
+            }
           }
         }
       }
@@ -452,6 +469,9 @@ window.addEventListener("keydown", (e) => {
   }
   if (k === "r" && !e.repeat) {
     toggleCrafting();
+  }
+  if (k === "q" && !e.repeat) {
+    togglePanel(questPanel, renderQuestPanel);
   }
   if (k === "m" && !e.repeat) {
     toggleWorldMap();
@@ -561,6 +581,14 @@ function nearestBoss() {
   return dist <= TILE * 1.3 ? bossTile : null;
 }
 
+function nearestNPC() {
+  if (!npcTile) return null;
+  const cx = npcTile.x * TILE + TILE / 2;
+  const cy = npcTile.y * TILE + TILE / 2;
+  const dist = Math.hypot(cx - player.x, cy - player.y);
+  return dist <= TILE * 1.3 ? npcTile : null;
+}
+
 function nearestPortal() {
   for (const portal of portals) {
     const cx = portal.x * TILE + TILE / 2;
@@ -623,14 +651,18 @@ function update(dt) {
 
   const near = nearestResourceTile();
   const nearChest = near ? null : nearestChest();
-  const nearBoss = near || nearChest ? null : nearestBoss();
-  const nearPortal = near || nearChest || nearBoss ? null : nearestPortal();
+  const nearNPC = near || nearChest ? null : nearestNPC();
+  const nearBoss = near || nearChest || nearNPC ? null : nearestBoss();
+  const nearPortal = near || nearChest || nearNPC || nearBoss ? null : nearestPortal();
   if (near) {
     const itemDef = getItemDef(near.res.itemId);
     promptEl.textContent = `Press E to gather ${itemDef.name}`;
     promptEl.style.display = "block";
   } else if (nearChest) {
     promptEl.textContent = isStorageOpen() ? "Press E to close" : "Press E to open Chest";
+    promptEl.style.display = "block";
+  } else if (nearNPC) {
+    promptEl.textContent = `Press E to talk to ${NPC_DEFS[nearNPC.npcId].name}`;
     promptEl.style.display = "block";
   } else if (nearBoss) {
     promptEl.textContent = `Press E to challenge ${BOSS_DEFS[nearBoss.bossId].name}`;
@@ -661,6 +693,7 @@ function baseTileFor(t) {
   if (t === T.DUNGEON_ENTRANCE) return T.SNOW;
   if (t === T.CASTLE_ENTRANCE) return T.HILLS_GROUND;
   if (t === T.HOUSE_ENTRANCE) return T.VILLAGE_GROUND;
+  if (t === T.NPC) return T.FLOOR;
   return t;
 }
 
@@ -892,6 +925,15 @@ function drawHouseEntrance(px, py) {
   ctx.fillText("🏠", px + TILE / 2, py + TILE / 2 + 1);
 }
 
+function drawNpc(px, py) {
+  if (!npcTile) return;
+  const def = NPC_DEFS[npcTile.npcId];
+  ctx.font = "28px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(def ? def.icon : "🧑", px + TILE / 2, py + TILE / 2 + 1);
+}
+
 const TILE_SPRITES = {
   [T.TREE]: drawTree,
   [T.ROCK]: drawRock,
@@ -904,6 +946,7 @@ const TILE_SPRITES = {
   [T.JEWEL]: drawJewel,
   [T.BOSS]: drawBoss,
   [T.HOUSE_ENTRANCE]: drawHouseEntrance,
+  [T.NPC]: drawNpc,
 };
 
 function drawPlayer(px, py) {

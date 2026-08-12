@@ -53,6 +53,13 @@
         </div>
       </div>
 
+      <div id="quest-panel" class="panel">
+        <div class="panel-header">Journal</div>
+        <div class="panel-body">
+          <div id="quest-list" class="quest-list"></div>
+        </div>
+      </div>
+
       <div id="storage-modal" class="modal">
         <div class="modal-box">
           <div class="modal-header">
@@ -95,6 +102,17 @@
             <button id="crafting-close-btn" class="close-btn">&times;</button>
           </div>
           <div id="craft-list" class="craft-list"></div>
+        </div>
+      </div>
+
+      <div id="dialogue-modal" class="modal">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span id="dialogue-name"></span>
+            <button id="dialogue-close-btn" class="close-btn">&times;</button>
+          </div>
+          <p id="dialogue-text" class="dialogue-text"></p>
+          <div id="dialogue-buttons" class="dialogue-buttons"></div>
         </div>
       </div>
 
@@ -188,7 +206,7 @@
         <button id="battle-continue-btn" class="upgrade-btn">Continue</button>
       </div>
     </div>
-    <p id="help">Move: <b>W A S D</b> &nbsp;|&nbsp; Gather / Interact: <b>E</b> &nbsp;|&nbsp; Inventory: <b>I</b> &nbsp;|&nbsp; Character: <b>C</b> &nbsp;|&nbsp; Crafting: <b>R</b> &nbsp;|&nbsp; Map: <b>M</b></p>
+    <p id="help">Move: <b>W A S D</b> &nbsp;|&nbsp; Gather / Interact: <b>E</b> &nbsp;|&nbsp; Inventory: <b>I</b> &nbsp;|&nbsp; Character: <b>C</b> &nbsp;|&nbsp; Crafting: <b>R</b> &nbsp;|&nbsp; Journal: <b>Q</b> &nbsp;|&nbsp; Map: <b>M</b></p>
 
     <div id="touch-controls" class="touch-controls">
       <div id="touch-joystick" class="touch-joystick">
@@ -200,6 +218,7 @@
         <button id="touch-inv-btn" class="touch-panel-btn" title="Inventory">🎒</button>
         <button id="touch-char-btn" class="touch-panel-btn" title="Character">👤</button>
         <button id="touch-craft-btn" class="touch-panel-btn" title="Crafting">🔨</button>
+        <button id="touch-quest-btn" class="touch-panel-btn" title="Journal">📜</button>
         <button id="touch-map-btn" class="touch-panel-btn" title="Map">🗺️</button>
       </div>
     </div>
@@ -215,6 +234,8 @@
   <script src="spells.js"></script>
   <script src="statuses.js"></script>
   <script src="combat.js"></script>
+  <script src="npcs.js"></script>
+  <script src="quests.js"></script>
   <script src="game.js"></script>
   <script src="touch-controls.js"></script>
 </body>

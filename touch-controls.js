@@ -86,6 +86,7 @@ function setupTouchButtons() {
     ["touch-inv-btn", "i"],
     ["touch-char-btn", "c"],
     ["touch-craft-btn", "r"],
+    ["touch-quest-btn", "q"],
     ["touch-map-btn", "m"],
   ];
   bindings.forEach(([id, key]) => {

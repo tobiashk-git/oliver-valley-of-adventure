@@ -1144,3 +1144,46 @@ canvas {
     width: 46px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Dialogue modal + Quest journal panel
+--------------------------------------------------------------------------- */
+
+.dialogue-text {
+  margin: 12px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #d8d0c0;
+}
+
+.dialogue-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dialogue-buttons .craft-btn {
+  flex: 1;
+  min-width: 100px;
+}
+
+.quest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quest-entry {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d8d0c0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #4a4032;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.quest-empty {
+  color: #7a7267;
+  font-style: italic;
+}
