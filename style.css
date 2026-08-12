@@ -64,6 +64,14 @@ canvas {
   font-size: 20px;
 }
 
+.hud-world {
+  padding-left: 10px;
+  border-left: 1px solid #4a4032;
+  color: #e8c368;
+  font-weight: bold;
+  font-size: 14px;
+}
+
 #prompt {
   position: absolute;
   bottom: 16px;

@@ -41,6 +41,8 @@ const T = {
   HOUSE_ENTRANCE: 23,
   VILLAGE_GROUND: 24,
   NPC: 25,
+  ALTAR: 26,
+  HIDDEN_DUNGEON_ENTRANCE: 27,
 };
 
 const SOLID_TILES = new Set([
@@ -59,6 +61,8 @@ const SOLID_TILES = new Set([
   T.BOSS,
   T.HOUSE_ENTRANCE,
   T.NPC,
+  T.ALTAR,
+  T.HIDDEN_DUNGEON_ENTRANCE,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -89,11 +93,20 @@ const VILLAGE_BOUNDS = {
   y0: WORLD_CENTER_Y - 6,
   y1: WORLD_CENTER_Y + 6,
 };
-const VILLAGE_HOUSES = [
-  { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2, npc: "village_elder" },
-  { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2, npc: "village_trader" },
+// Village house positions are reused identically by every world (each world's
+// map is its own independent grid, so there's no collision risk) — only which
+// NPC (if any) lives in each is world.js's decision, since World 1's elder
+// keeps its fixed id while later worlds' elders get their own.
+const VILLAGE_HOUSE_POSITIONS = [
+  { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2 },
+  { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2 },
   { id: "village_house_3", x: WORLD_CENTER_X, y: WORLD_CENTER_Y + 4 },
 ];
+// Where the altar sits in every world's village square.
+const ALTAR_POS = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y - 2 };
+// Where each world's hidden final-boss dungeon appears once revealed — the
+// forest zone (west), well outside the central valley/village.
+const FINAL_DUNGEON_POS = { x: WORLD_CENTER_X - 25, y: WORLD_CENTER_Y };
 
 // Which cardinal zone a tile belongs to: a central valley, surrounded by four
 // wedge-shaped biomes (snow north, desert south, forest west, hills east).
@@ -114,6 +127,7 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const woodCountEl = document.getElementById("wood-count");
 const stoneCountEl = document.getElementById("stone-count");
+const worldIndicatorEl = document.getElementById("world-indicator");
 const promptEl = document.getElementById("prompt");
 const characterPanel = document.getElementById("character-panel");
 const inventoryPanel = document.getElementById("inventory-panel");
@@ -187,9 +201,11 @@ function buildOverworld() {
   map[DUNGEON_ENTRANCE.y][DUNGEON_ENTRANCE.x] = T.DUNGEON_ENTRANCE;
   map[CASTLE_ENTRANCE.y][CASTLE_ENTRANCE.x] = T.CASTLE_ENTRANCE;
   map[HOUSE_ENTRANCE.y][HOUSE_ENTRANCE.x] = T.HOUSE_ENTRANCE;
-  for (const house of VILLAGE_HOUSES) {
+  for (const house of VILLAGE_HOUSE_POSITIONS) {
     map[house.y][house.x] = T.HOUSE_ENTRANCE;
   }
+  resources.delete(key(ALTAR_POS.x, ALTAR_POS.y));
+  map[ALTAR_POS.y][ALTAR_POS.x] = T.ALTAR;
 
   return {
     map,
@@ -246,139 +262,24 @@ function buildInterior({ width, height, wallTile, floorTile, chests, boss }) {
   };
 }
 
-const overworldLevel = buildOverworld();
+// `levels`/`bossDefeated` start empty and get populated by buildWorld() (see
+// world.js) — called once for World 1 right below, and again later (at
+// runtime, via the altar) for each subsequent world.
+let levels = {};
+let bossDefeated = {};
+let LEVEL_TO_WORLD = {}; // levelId -> world number, populated by buildWorld()
 
-const dungeonLevel = buildInterior({
-  width: 9,
-  height: 7,
-  wallTile: T.DUNGEON_WALL,
-  floorTile: T.DUNGEON_FLOOR,
-  chests: [
-    { x: 2, y: 2, storageId: "dungeon_chest_1", name: "Old Chest", gold: 15 },
-    { x: 6, y: 2, storageId: "dungeon_chest_2", name: "Iron Chest", gold: 20 },
-  ],
-  boss: { x: 4, y: 2, bossId: "dungeon_boss" },
-});
-
-const castleLevel = buildInterior({
-  width: 11,
-  height: 8,
-  wallTile: T.CASTLE_WALL,
-  floorTile: T.CASTLE_FLOOR,
-  chests: [
-    { x: 2, y: 2, storageId: "castle_chest_1", name: "Royal Coffer", gold: 40 },
-    { x: 9, y: 2, storageId: "castle_chest_2", name: "Treasury Chest", gold: 60 },
-  ],
-  boss: { x: 5, y: 2, bossId: "castle_boss" },
-});
-
-// A safe interior, like the dungeon/castle but with no chests-with-gold (the
-// house chest is the player's own pre-existing storage, added below rather
-// than through `chests`, which would gold-fill a fresh one) and no boss.
-const houseLevel = buildInterior({
-  width: 11,
-  height: 9,
-  wallTile: T.WALL,
-  floorTile: T.FLOOR,
-  chests: [],
-});
-houseLevel.map[2][2] = T.CHEST;
-houseLevel.chestTiles.push({ x: 2, y: 2, storageId: "house_chest" });
-
-// link the overworld entrances to their interiors, and each interior's door back out
-overworldLevel.portals.push(
-  {
-    x: DUNGEON_ENTRANCE.x,
-    y: DUNGEON_ENTRANCE.y,
-    toLevelId: "dungeon",
-    toX: dungeonLevel.spawnX,
-    toY: dungeonLevel.spawnY,
-    label: "enter the Dungeon",
-  },
-  {
-    x: CASTLE_ENTRANCE.x,
-    y: CASTLE_ENTRANCE.y,
-    toLevelId: "castle",
-    toX: castleLevel.spawnX,
-    toY: castleLevel.spawnY,
-    label: "enter the Castle",
-  },
-  {
-    x: HOUSE_ENTRANCE.x,
-    y: HOUSE_ENTRANCE.y,
-    toLevelId: "house",
-    toX: houseLevel.spawnX,
-    toY: houseLevel.spawnY,
-    label: "enter the House",
-  },
-);
-dungeonLevel.portals.push({
-  x: dungeonLevel.doorX,
-  y: dungeonLevel.doorY,
-  toLevelId: "overworld",
-  toX: DUNGEON_ENTRANCE.x * TILE + TILE / 2,
-  toY: (DUNGEON_ENTRANCE.y + 1) * TILE + TILE / 2,
-  label: "leave the Dungeon",
-});
-castleLevel.portals.push({
-  x: castleLevel.doorX,
-  y: castleLevel.doorY,
-  toLevelId: "overworld",
-  toX: CASTLE_ENTRANCE.x * TILE + TILE / 2,
-  toY: (CASTLE_ENTRANCE.y + 1) * TILE + TILE / 2,
-  label: "leave the Castle",
-});
-houseLevel.portals.push({
-  x: houseLevel.doorX,
-  y: houseLevel.doorY,
-  toLevelId: "overworld",
-  toX: HOUSE_ENTRANCE.x * TILE + TILE / 2,
-  toY: (HOUSE_ENTRANCE.y + 1) * TILE + TILE / 2,
-  label: "leave the House",
-});
-
-// The 3 other houses in the village — empty rooms for now (see VILLAGE_HOUSES),
-// built and wired with the identical house/dungeon/castle portal pattern.
-const villageHouseLevels = {};
-VILLAGE_HOUSES.forEach((house, i) => {
-  const label = `House ${i + 2}`; // "House 1" is implicitly Oliver's own
-  const level = buildInterior({ width: 9, height: 7, wallTile: T.WALL, floorTile: T.FLOOR, chests: [] });
-  overworldLevel.portals.push({
-    x: house.x,
-    y: house.y,
-    toLevelId: house.id,
-    toX: level.spawnX,
-    toY: level.spawnY,
-    label: `enter ${label}`,
-  });
-  level.portals.push({
-    x: level.doorX,
-    y: level.doorY,
-    toLevelId: "overworld",
-    toX: house.x * TILE + TILE / 2,
-    toY: (house.y + 1) * TILE + TILE / 2,
-    label: `leave ${label}`,
-  });
-  if (house.npc) {
-    level.map[2][4] = T.NPC;
-    level.npcTile = { x: 4, y: 2, npcId: house.npc };
-  }
-  villageHouseLevels[house.id] = level;
-});
-
-const levels = {
-  overworld: overworldLevel,
-  dungeon: dungeonLevel,
-  castle: castleLevel,
-  house: houseLevel,
-  ...villageHouseLevels,
-};
-
-// Checkpoint state: once a boss is beaten it never fights again.
-const bossDefeated = { dungeon_boss: false, castle_boss: false };
+buildWorld(1);
+// World 1 is the only world with Oliver's own personal house (defeat-respawn
+// and the initial spawn always return here, regardless of which world the
+// player is currently adventuring in) — kept as a plain alias so the two
+// places that need it (below, and handleDefeat() in combat.js) don't need
+// to change.
+const houseLevel = levels.house;
 
 let currentLevelId = null;
-let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile;
+let currentWorld = 1;
+let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile, altarTile;
 
 function activateLevel(levelId, spawnX, spawnY) {
   currentLevelId = levelId;
@@ -391,13 +292,21 @@ function activateLevel(levelId, spawnX, spawnY) {
   portals = lvl.portals;
   bossTile = lvl.bossTile;
   npcTile = lvl.npcTile;
+  altarTile = lvl.altarTile;
   if (spawnX !== undefined) {
     player.x = spawnX;
     player.y = spawnY;
   }
   closeStorage();
   if (levelId in discoveredPOIs) discoveredPOIs[levelId] = true;
-  if (levelId === "dungeon") armEncounterGracePeriod(ENCOUNTER_ENTRY_GRACE_STEPS);
+  // Suffix checks (not exact match) so this still applies to later worlds'
+  // own dungeon/castle/final-boss dungeon, which use prefixed ids like
+  // "world2_dungeon" or "world1_final_dungeon" but always end the same way.
+  if (levelId.endsWith("dungeon")) armEncounterGracePeriod(ENCOUNTER_ENTRY_GRACE_STEPS);
+  if (levelId in LEVEL_TO_WORLD) {
+    currentWorld = LEVEL_TO_WORLD[levelId];
+    updateWorldIndicator();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -444,13 +353,22 @@ window.addEventListener("keydown", (e) => {
         if (npc) {
           interactWithNPC(npc.npcId);
         } else {
-          const boss = nearestBoss();
-          if (boss) {
-            startBossFight(boss.bossId);
+          const altar = nearestAltar();
+          if (altar) {
+            if (isDialogueOpen()) {
+              closeDialogue();
+            } else {
+              interactWithAltar(altar);
+            }
           } else {
-            const portal = nearestPortal();
-            if (portal) {
-              activateLevel(portal.toLevelId, portal.toX, portal.toY);
+            const boss = nearestBoss();
+            if (boss) {
+              startBossFight(boss.bossId);
+            } else {
+              const portal = nearestPortal();
+              if (portal) {
+                activateLevel(portal.toLevelId, portal.toX, portal.toY);
+              }
             }
           }
         }
@@ -559,6 +477,10 @@ function refreshHud() {
   renderInventoryPanel();
 }
 
+function updateWorldIndicator() {
+  worldIndicatorEl.textContent = `World ${currentWorld}`;
+}
+
 function nearestChest() {
   for (const chest of chestTiles) {
     const cx = chest.x * TILE + TILE / 2;
@@ -583,6 +505,14 @@ function nearestNPC() {
   const cy = npcTile.y * TILE + TILE / 2;
   const dist = Math.hypot(cx - player.x, cy - player.y);
   return dist <= TILE * 1.3 ? npcTile : null;
+}
+
+function nearestAltar() {
+  if (!altarTile) return null;
+  const cx = altarTile.x * TILE + TILE / 2;
+  const cy = altarTile.y * TILE + TILE / 2;
+  const dist = Math.hypot(cx - player.x, cy - player.y);
+  return dist <= TILE * 1.3 ? altarTile : null;
 }
 
 function nearestPortal() {
@@ -648,8 +578,9 @@ function update(dt) {
   const near = nearestResourceTile();
   const nearChest = near ? null : nearestChest();
   const nearNPC = near || nearChest ? null : nearestNPC();
-  const nearBoss = near || nearChest || nearNPC ? null : nearestBoss();
-  const nearPortal = near || nearChest || nearNPC || nearBoss ? null : nearestPortal();
+  const nearAltar = near || nearChest || nearNPC ? null : nearestAltar();
+  const nearBoss = near || nearChest || nearNPC || nearAltar ? null : nearestBoss();
+  const nearPortal = near || nearChest || nearNPC || nearAltar || nearBoss ? null : nearestPortal();
   if (near) {
     const itemDef = getItemDef(near.res.itemId);
     promptEl.textContent = `Press E to gather ${itemDef.name}`;
@@ -660,6 +591,9 @@ function update(dt) {
   } else if (nearNPC) {
     const npcDef = NPC_DEFS[nearNPC.npcId];
     promptEl.textContent = npcDef.shop ? `Press E to trade with ${npcDef.name}` : `Press E to talk to ${npcDef.name}`;
+    promptEl.style.display = "block";
+  } else if (nearAltar) {
+    promptEl.textContent = "Press E to use the Altar";
     promptEl.style.display = "block";
   } else if (nearBoss) {
     promptEl.textContent = `Press E to challenge ${BOSS_DEFS[nearBoss.bossId].name}`;
@@ -679,8 +613,11 @@ function update(dt) {
 function baseTileFor(t) {
   if (t === T.TREE || t === T.ROCK) return T.GRASS;
   if (t === T.CHEST || t === T.BOSS) {
-    if (currentLevelId === "dungeon") return T.DUNGEON_FLOOR;
-    if (currentLevelId === "castle") return T.CASTLE_FLOOR;
+    // Suffix checks, not exact match: later worlds' dungeon/castle/final-boss
+    // dungeon use prefixed ids ("world2_dungeon", "world1_final_dungeon", ...)
+    // but always end the same way.
+    if (currentLevelId.endsWith("dungeon")) return T.DUNGEON_FLOOR;
+    if (currentLevelId.endsWith("castle")) return T.CASTLE_FLOOR;
     return T.FLOOR;
   }
   if (t === T.ICE) return T.SNOW;
@@ -689,8 +626,9 @@ function baseTileFor(t) {
   if (t === T.JEWEL) return T.HILLS_GROUND;
   if (t === T.DUNGEON_ENTRANCE) return T.SNOW;
   if (t === T.CASTLE_ENTRANCE) return T.HILLS_GROUND;
-  if (t === T.HOUSE_ENTRANCE) return T.VILLAGE_GROUND;
+  if (t === T.HOUSE_ENTRANCE || t === T.ALTAR) return T.VILLAGE_GROUND;
   if (t === T.NPC) return T.FLOOR;
+  if (t === T.HIDDEN_DUNGEON_ENTRANCE) return T.FOREST_GROUND;
   return t;
 }
 
@@ -931,6 +869,20 @@ function drawNpc(px, py) {
   ctx.fillText(def ? def.icon : "🧑", px + TILE / 2, py + TILE / 2 + 1);
 }
 
+function drawAltar(px, py) {
+  ctx.font = "26px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("⛩️", px + TILE / 2, py + TILE / 2 + 1);
+}
+
+function drawHiddenDungeonEntrance(px, py) {
+  ctx.font = "24px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🌋", px + TILE / 2, py + TILE / 2 + 1);
+}
+
 const TILE_SPRITES = {
   [T.TREE]: drawTree,
   [T.ROCK]: drawRock,
@@ -944,6 +896,8 @@ const TILE_SPRITES = {
   [T.BOSS]: drawBoss,
   [T.HOUSE_ENTRANCE]: drawHouseEntrance,
   [T.NPC]: drawNpc,
+  [T.ALTAR]: drawAltar,
+  [T.HIDDEN_DUNGEON_ENTRANCE]: drawHiddenDungeonEntrance,
 };
 
 function drawPlayer(px, py) {

@@ -25,6 +25,9 @@ function objectiveProgress(objective) {
   if (objective.type === "gather") {
     return { have: getResourceCount(objective.itemId), need: objective.amount };
   }
+  if (objective.type === "defeat_bosses") {
+    return { have: objective.bossIds.filter((id) => bossDefeated[id]).length, need: objective.bossIds.length };
+  }
   return { have: 0, need: 0 };
 }
 
@@ -34,8 +37,9 @@ function objectiveMet(objective) {
 }
 
 function objectiveLabel(objective) {
-  const def = getItemDef(objective.itemId);
   const { have, need } = objectiveProgress(objective);
+  if (objective.type === "defeat_bosses") return `${Math.min(have, need)}/${need} Guardians`;
+  const def = getItemDef(objective.itemId);
   return `${Math.min(have, need)}/${need} ${def.name}`;
 }
 
@@ -54,9 +58,18 @@ function closeDialogue() {
   currentDialogueNpcId = null;
 }
 
+// An NPC can offer more than one quest (e.g. World 1's elder has both the
+// original "gather wood" quest and the main "defeat the Guardians" quest) —
+// show whichever isn't completed yet, in list order; once everything's done,
+// fall back to the last one so there's still a sensible "completed" line.
+function pickActiveQuest(questIds) {
+  const active = questIds.map((id) => QUEST_DEFS[id]).find((q) => questState[q.id] !== "completed");
+  return active || QUEST_DEFS[questIds[questIds.length - 1]];
+}
+
 function renderDialogue() {
   const npc = NPC_DEFS[currentDialogueNpcId];
-  const quest = QUEST_DEFS[npc.questId];
+  const quest = pickActiveQuest(npc.questIds);
   const state = questState[quest.id];
 
   document.getElementById("dialogue-name").textContent = npc.name;
@@ -68,7 +81,11 @@ function renderDialogue() {
   } else if (state === "accepted") {
     if (objectiveMet(quest.objective)) {
       line = quest.dialogue.readyToComplete;
-      buttons.push({ label: "Turn In", onClick: () => turnInQuest(quest.id) });
+      // "gather" turns in right here; other types (e.g. "defeat_bosses") are
+      // completed externally — the altar, not this dialogue, marks them done.
+      if (quest.objective.type === "gather") {
+        buttons.push({ label: "Turn In", onClick: () => turnInQuest(quest.id) });
+      }
     } else {
       line = `${quest.dialogue.inProgress} (${objectiveLabel(quest.objective)})`;
     }
@@ -136,6 +153,23 @@ function renderQuestPanel() {
   list.innerHTML = lines.length
     ? lines.map((line) => `<div class="quest-entry">${line}</div>`).join("")
     : `<div class="quest-entry quest-empty">No quests yet.</div>`;
+}
+
+// A one-off message through the same modal, not tied to an NPC_DEFS entry —
+// used by the altar, which isn't an NPC. Closing it behaves exactly like
+// closeDialogue(), it just doesn't need currentDialogueNpcId set first.
+function showMessage(title, text) {
+  currentDialogueNpcId = null;
+  document.getElementById("dialogue-name").textContent = title;
+  document.getElementById("dialogue-text").textContent = text;
+  const buttonsEl = document.getElementById("dialogue-buttons");
+  buttonsEl.innerHTML = "";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "craft-btn";
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("click", closeDialogue);
+  buttonsEl.appendChild(closeBtn);
+  document.getElementById("dialogue-modal").classList.add("open");
 }
 
 document.getElementById("dialogue-close-btn").addEventListener("click", closeDialogue);

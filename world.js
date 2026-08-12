@@ -1,0 +1,283 @@
+// ---------------------------------------------------------------------------
+// World generation + the altar/crystal main-quest progression
+//
+// Each world is: an overworld (dungeon + castle + village + altar) plus a
+// hidden final-boss dungeon that only becomes reachable once its altar has
+// been fed 2 Guardian Crystals. World 1 is built once at load time; each
+// later world is built lazily, the moment the previous world's altar opens
+// its portal.
+// ---------------------------------------------------------------------------
+
+const WORLD_INFO = {}; // worldNumber -> { overworldLevelId, overworldLevel, dungeonBossId, castleBossId, finalBossId, finalBossLevelId, finalBossLevel, arrivalSpawn }
+let worldProgress = {}; // worldNumber -> { finalBossRevealed, portalOpened }
+
+function buildWorld(worldNumber) {
+  const idPrefix = worldNumber === 1 ? "" : `world${worldNumber}_`;
+  const levelId = (name) => idPrefix + name;
+
+  const overworldLevel = buildOverworld();
+  const overworldLevelId = levelId("overworld");
+
+  // World 1 keeps its original fixed boss ids (already tested, already has
+  // gear-drop items configured); every later world gets its own prefixed
+  // clones so checkpoints never leak between worlds.
+  const dungeonBossId = worldNumber === 1 ? "dungeon_boss" : levelId("dungeon_boss");
+  const castleBossId = worldNumber === 1 ? "castle_boss" : levelId("castle_boss");
+  const finalBossId = levelId("final_boss");
+  if (worldNumber !== 1) {
+    registerBoss(dungeonBossId, DUNGEON_GUARDIAN_TEMPLATE);
+    registerBoss(castleBossId, CASTLE_GUARDIAN_TEMPLATE);
+  }
+  registerBoss(finalBossId, FINAL_BOSS_TEMPLATE);
+
+  const dungeonLevel = buildInterior({
+    width: 9,
+    height: 7,
+    wallTile: T.DUNGEON_WALL,
+    floorTile: T.DUNGEON_FLOOR,
+    chests: [
+      { x: 2, y: 2, storageId: levelId("dungeon_chest_1"), name: "Old Chest", gold: 15 },
+      { x: 6, y: 2, storageId: levelId("dungeon_chest_2"), name: "Iron Chest", gold: 20 },
+    ],
+    boss: { x: 4, y: 2, bossId: dungeonBossId },
+  });
+
+  const castleLevel = buildInterior({
+    width: 11,
+    height: 8,
+    wallTile: T.CASTLE_WALL,
+    floorTile: T.CASTLE_FLOOR,
+    chests: [
+      { x: 2, y: 2, storageId: levelId("castle_chest_1"), name: "Royal Coffer", gold: 40 },
+      { x: 9, y: 2, storageId: levelId("castle_chest_2"), name: "Treasury Chest", gold: 60 },
+    ],
+    boss: { x: 5, y: 2, bossId: castleBossId },
+  });
+
+  // The hidden final-boss dungeon: built now so it fully exists, but not
+  // linked to the overworld until the altar reveals it (see revealFinalBoss).
+  const finalBossLevelId = levelId("final_dungeon");
+  const finalBossLevel = buildInterior({
+    width: 11,
+    height: 9,
+    wallTile: T.DUNGEON_WALL,
+    floorTile: T.DUNGEON_FLOOR,
+    chests: [],
+    boss: { x: 5, y: 4, bossId: finalBossId },
+  });
+  finalBossLevel.portals.push({
+    x: finalBossLevel.doorX,
+    y: finalBossLevel.doorY,
+    toLevelId: overworldLevelId,
+    toX: FINAL_DUNGEON_POS.x * TILE + TILE / 2,
+    toY: (FINAL_DUNGEON_POS.y + 1) * TILE + TILE / 2,
+    label: "leave the Hidden Dungeon",
+  });
+
+  overworldLevel.portals.push(
+    {
+      x: DUNGEON_ENTRANCE.x,
+      y: DUNGEON_ENTRANCE.y,
+      toLevelId: levelId("dungeon"),
+      toX: dungeonLevel.spawnX,
+      toY: dungeonLevel.spawnY,
+      label: "enter the Dungeon",
+    },
+    {
+      x: CASTLE_ENTRANCE.x,
+      y: CASTLE_ENTRANCE.y,
+      toLevelId: levelId("castle"),
+      toX: castleLevel.spawnX,
+      toY: castleLevel.spawnY,
+      label: "enter the Castle",
+    }
+  );
+  dungeonLevel.portals.push({
+    x: dungeonLevel.doorX,
+    y: dungeonLevel.doorY,
+    toLevelId: overworldLevelId,
+    toX: DUNGEON_ENTRANCE.x * TILE + TILE / 2,
+    toY: (DUNGEON_ENTRANCE.y + 1) * TILE + TILE / 2,
+    label: "leave the Dungeon",
+  });
+  castleLevel.portals.push({
+    x: castleLevel.doorX,
+    y: castleLevel.doorY,
+    toLevelId: overworldLevelId,
+    toX: CASTLE_ENTRANCE.x * TILE + TILE / 2,
+    toY: (CASTLE_ENTRANCE.y + 1) * TILE + TILE / 2,
+    label: "leave the Castle",
+  });
+
+  // World 1 only: Oliver's own personal house (defeat-respawn/initial spawn
+  // always return here regardless of which world is currently active).
+  if (worldNumber === 1) {
+    const houseLevel = buildInterior({ width: 11, height: 9, wallTile: T.WALL, floorTile: T.FLOOR, chests: [] });
+    houseLevel.map[2][2] = T.CHEST;
+    houseLevel.chestTiles.push({ x: 2, y: 2, storageId: "house_chest" });
+    overworldLevel.portals.push({
+      x: HOUSE_ENTRANCE.x,
+      y: HOUSE_ENTRANCE.y,
+      toLevelId: "house",
+      toX: houseLevel.spawnX,
+      toY: houseLevel.spawnY,
+      label: "enter the House",
+    });
+    houseLevel.portals.push({
+      x: houseLevel.doorX,
+      y: houseLevel.doorY,
+      toLevelId: overworldLevelId,
+      toX: HOUSE_ENTRANCE.x * TILE + TILE / 2,
+      toY: (HOUSE_ENTRANCE.y + 1) * TILE + TILE / 2,
+      label: "leave the House",
+    });
+    levels.house = houseLevel;
+    LEVEL_TO_WORLD.house = worldNumber;
+  }
+
+  // Village: quest-giver + vendor houses, plus one still genuinely empty
+  // (matching World 1's precedent). World 1's elder keeps its fixed id and
+  // already has "gather_wood"; every world's elder also gets that world's
+  // own main quest appended.
+  const elderNpcId = worldNumber === 1 ? "village_elder" : levelId("village_elder");
+  const mainQuestId = levelId("defeat_guardians");
+  if (worldNumber !== 1) {
+    registerNPC(elderNpcId, { name: "Village Elder", icon: "🧑‍🌾" });
+  }
+  NPC_DEFS[elderNpcId].questIds.push(mainQuestId);
+
+  QUEST_DEFS[mainQuestId] = {
+    id: mainQuestId,
+    giverId: elderNpcId,
+    name: `Guardians of World ${worldNumber}`,
+    objective: { type: "defeat_bosses", bossIds: [dungeonBossId, castleBossId] },
+    reward: {},
+    dialogue: {
+      offer:
+        "Two Guardians protect an ancient power in this valley — one in the Dungeon, one in the Castle. Defeat them, and bring their crystals to the Altar in the village.",
+      inProgress: "The Guardians still stand. Seek them out in the Dungeon and the Castle.",
+      readyToComplete: "You've slain both Guardians! Now bring their crystals to the Altar at the village center.",
+      completed: "The Altar's power grows with what you've brought it. Thank you, traveler.",
+    },
+  };
+
+  const villageHouses = VILLAGE_HOUSE_POSITIONS.map((pos, i) => ({
+    ...pos,
+    npc: i === 0 ? elderNpcId : i === 1 ? "village_trader" : null,
+  }));
+  villageHouses.forEach((house, i) => {
+    const label = `House ${i + 2}`;
+    const level = buildInterior({ width: 9, height: 7, wallTile: T.WALL, floorTile: T.FLOOR, chests: [] });
+    overworldLevel.portals.push({
+      x: house.x,
+      y: house.y,
+      toLevelId: levelId(house.id),
+      toX: level.spawnX,
+      toY: level.spawnY,
+      label: `enter ${label}`,
+    });
+    level.portals.push({
+      x: level.doorX,
+      y: level.doorY,
+      toLevelId: overworldLevelId,
+      toX: house.x * TILE + TILE / 2,
+      toY: (house.y + 1) * TILE + TILE / 2,
+      label: `leave ${label}`,
+    });
+    if (house.npc) {
+      level.map[2][4] = T.NPC;
+      level.npcTile = { x: 4, y: 2, npcId: house.npc };
+    }
+    levels[levelId(house.id)] = level;
+    LEVEL_TO_WORLD[levelId(house.id)] = worldNumber;
+  });
+
+  overworldLevel.altarTile = { x: ALTAR_POS.x, y: ALTAR_POS.y, world: worldNumber };
+
+  levels[overworldLevelId] = overworldLevel;
+  levels[levelId("dungeon")] = dungeonLevel;
+  levels[levelId("castle")] = castleLevel;
+  levels[finalBossLevelId] = finalBossLevel;
+  LEVEL_TO_WORLD[overworldLevelId] = worldNumber;
+  LEVEL_TO_WORLD[levelId("dungeon")] = worldNumber;
+  LEVEL_TO_WORLD[levelId("castle")] = worldNumber;
+  LEVEL_TO_WORLD[finalBossLevelId] = worldNumber;
+
+  WORLD_INFO[worldNumber] = {
+    overworldLevelId,
+    overworldLevel,
+    dungeonBossId,
+    castleBossId,
+    finalBossId,
+    finalBossLevelId,
+    finalBossLevel,
+    // Just south of the altar, on open village ground — where a player
+    // arrives stepping in from the previous world's portal.
+    arrivalSpawn: { x: ALTAR_POS.x * TILE + TILE / 2, y: (ALTAR_POS.y + 2) * TILE + TILE / 2 },
+  };
+  worldProgress[worldNumber] = { finalBossRevealed: false, portalOpened: false };
+}
+
+// Stamps the hidden dungeon's entrance onto its world's overworld map and
+// links its portal both ways (the return portal was already wired in
+// buildWorld(), it just had nowhere to be entered from until now).
+function revealFinalBoss(world) {
+  const info = WORLD_INFO[world];
+  const pos = FINAL_DUNGEON_POS;
+  info.overworldLevel.resources.delete(key(pos.x, pos.y));
+  info.overworldLevel.map[pos.y][pos.x] = T.HIDDEN_DUNGEON_ENTRANCE;
+  info.overworldLevel.portals.push({
+    x: pos.x,
+    y: pos.y,
+    toLevelId: info.finalBossLevelId,
+    toX: info.finalBossLevel.spawnX,
+    toY: info.finalBossLevel.spawnY,
+    label: "enter the Hidden Dungeon",
+  });
+}
+
+// The altar is a tile-based interactable like every other one in the game
+// (see nearestAltar()/the E-key cascade in game.js), not an NPC — this is
+// its whole state machine: reveal -> defeat -> open portal -> step through.
+function interactWithAltar(altar) {
+  const world = altar.world;
+  const info = WORLD_INFO[world];
+  const progress = worldProgress[world];
+
+  if (!progress.finalBossRevealed) {
+    const have = getResourceCount("magic_crystal");
+    if (have >= 2) {
+      removeResource("magic_crystal", 2);
+      progress.finalBossRevealed = true;
+      revealFinalBoss(world);
+      const mainQuestId = `${world === 1 ? "" : `world${world}_`}defeat_guardians`;
+      questState[mainQuestId] = "completed";
+      if (isQuestPanelOpen()) renderQuestPanel();
+      showMessage("Altar", "The altar glows with power... a hidden path has been revealed somewhere in the valley!");
+    } else {
+      showMessage("Altar", `This altar needs 2 Guardian Crystals to reveal a hidden power. You have ${have}.`);
+    }
+    return;
+  }
+
+  if (!bossDefeated[info.finalBossId]) {
+    showMessage("Altar", "A powerful guardian awaits in the hidden dungeon. Return once it has been defeated.");
+    return;
+  }
+
+  if (!progress.portalOpened) {
+    const have = getResourceCount("magic_crystal");
+    if (have >= 1) {
+      removeResource("magic_crystal", 1);
+      progress.portalOpened = true;
+      if (!WORLD_INFO[world + 1]) buildWorld(world + 1);
+      showMessage("Altar", "The altar erupts with light... a portal to a new valley has opened!");
+    } else {
+      showMessage("Altar", "The altar awaits the final crystal.");
+    }
+    return;
+  }
+
+  const nextInfo = WORLD_INFO[world + 1];
+  activateLevel(nextInfo.overworldLevelId, nextInfo.arrivalSpawn.x, nextInfo.arrivalSpawn.y);
+}

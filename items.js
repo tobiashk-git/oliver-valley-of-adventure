@@ -178,6 +178,17 @@ const ITEM_DEFS = {
     defense: 8,
     value: 100,
   },
+  magic_crystal: {
+    id: "magic_crystal",
+    name: "Magic Crystal",
+    icon: "🔷",
+    type: "material",
+    rarity: "EPIC",
+    stackable: true,
+    maxStack: 10,
+    // deliberately no `value` — a quest item, not sellable (mirrors how
+    // bone_greatsword/royal_plate are kept out of the shop's own stock list)
+  },
 };
 
 function getItemDef(itemId) {

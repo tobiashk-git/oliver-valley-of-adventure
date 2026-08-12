@@ -100,14 +100,24 @@ function toggleWorldMap() {
   const modal = document.getElementById("worldmap-modal");
   if (modal.classList.contains("open")) {
     modal.classList.remove("open");
-  } else {
-    if (!minimapBuilt) {
-      buildMinimapImage();
-      minimapBuilt = true;
-    }
-    renderWorldMap();
-    modal.classList.add("open");
+    return;
   }
+  // worldMapPOIs()/travelTo() are hardcoded to World 1's fixed level ids
+  // (dungeon/castle/house) — showing/using them from another world would
+  // silently teleport the player back into World 1's copies. Multi-world
+  // map support is a later phase; for now just say so.
+  if (currentWorld !== 1) {
+    document.getElementById("worldmap-markers").innerHTML = "";
+    document.getElementById("worldmap-status").textContent = `The World Map only covers World 1 for now — you're exploring World ${currentWorld}.`;
+    modal.classList.add("open");
+    return;
+  }
+  if (!minimapBuilt) {
+    buildMinimapImage();
+    minimapBuilt = true;
+  }
+  renderWorldMap();
+  modal.classList.add("open");
 }
 
 document.getElementById("worldmap-close-btn").addEventListener("click", toggleWorldMap);

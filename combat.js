@@ -459,9 +459,11 @@ function checkEnemyDefeat(index, onResolved) {
     const gold = def.goldMin + Math.floor(Math.random() * (def.goldMax - def.goldMin + 1));
     addItem("gold", gold);
     let msg = `${def.name} defeated! Found ${gold} gold.`;
-    if (def.dropItemId) {
-      addItem(def.dropItemId, 1);
-      msg += ` Obtained ${getItemDef(def.dropItemId).name}!`;
+    if (def.dropItemIds) {
+      def.dropItemIds.forEach((itemId) => {
+        addItem(itemId, 1);
+        msg += ` Obtained ${getItemDef(itemId).name}!`;
+      });
     }
     refreshHud();
     logBattle(msg);
