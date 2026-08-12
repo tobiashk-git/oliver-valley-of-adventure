@@ -19,6 +19,7 @@ const ITEM_DEFS = {
     rarity: "COMMON",
     stackable: true,
     maxStack: 99,
+    value: 1,
   },
   stone: {
     id: "stone",
@@ -28,6 +29,7 @@ const ITEM_DEFS = {
     rarity: "COMMON",
     stackable: true,
     maxStack: 99,
+    value: 1,
   },
   wooden_pickaxe: {
     id: "wooden_pickaxe",
@@ -38,6 +40,7 @@ const ITEM_DEFS = {
     stackable: false,
     maxStack: 1,
     attack: 2,
+    value: 6,
   },
   sturdy_planks: {
     id: "sturdy_planks",
@@ -47,6 +50,7 @@ const ITEM_DEFS = {
     rarity: "UNCOMMON",
     stackable: true,
     maxStack: 99,
+    value: 4,
   },
   ice: {
     id: "ice",
@@ -56,6 +60,7 @@ const ITEM_DEFS = {
     rarity: "COMMON",
     stackable: true,
     maxStack: 99,
+    value: 2,
   },
   cactus: {
     id: "cactus",
@@ -65,6 +70,7 @@ const ITEM_DEFS = {
     rarity: "COMMON",
     stackable: true,
     maxStack: 99,
+    value: 2,
   },
   flower: {
     id: "flower",
@@ -74,6 +80,7 @@ const ITEM_DEFS = {
     rarity: "COMMON",
     stackable: true,
     maxStack: 99,
+    value: 2,
   },
   jewel: {
     id: "jewel",
@@ -83,6 +90,7 @@ const ITEM_DEFS = {
     rarity: "RARE",
     stackable: true,
     maxStack: 99,
+    value: 10,
   },
   gold: {
     id: "gold",
@@ -102,6 +110,7 @@ const ITEM_DEFS = {
     stackable: true,
     maxStack: 20,
     effect: { kind: "heal", amount: 12 },
+    value: 12,
   },
   mana_potion: {
     id: "mana_potion",
@@ -112,6 +121,7 @@ const ITEM_DEFS = {
     stackable: true,
     maxStack: 20,
     effect: { kind: "restoreMp", amount: 6 },
+    value: 15,
   },
   antidote: {
     id: "antidote",
@@ -122,6 +132,7 @@ const ITEM_DEFS = {
     stackable: true,
     maxStack: 20,
     effect: { kind: "cure", status: "poison" },
+    value: 10,
   },
   leather_armor: {
     id: "leather_armor",
@@ -132,6 +143,7 @@ const ITEM_DEFS = {
     stackable: false,
     maxStack: 1,
     defense: 3,
+    value: 20,
   },
   charm_of_warding: {
     id: "charm_of_warding",
@@ -142,6 +154,7 @@ const ITEM_DEFS = {
     stackable: false,
     maxStack: 1,
     bonus: { statusResistance: 0.5 },
+    value: 30,
   },
   bone_greatsword: {
     id: "bone_greatsword",
@@ -152,6 +165,7 @@ const ITEM_DEFS = {
     stackable: false,
     maxStack: 1,
     attack: 6,
+    value: 90,
   },
   royal_plate: {
     id: "royal_plate",
@@ -162,6 +176,7 @@ const ITEM_DEFS = {
     stackable: false,
     maxStack: 1,
     defense: 8,
+    value: 100,
   },
 };
 

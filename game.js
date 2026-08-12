@@ -91,7 +91,7 @@ const VILLAGE_BOUNDS = {
 };
 const VILLAGE_HOUSES = [
   { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2, npc: "village_elder" },
-  { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2 },
+  { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2, npc: "village_trader" },
   { id: "village_house_3", x: WORLD_CENTER_X, y: WORLD_CENTER_Y + 4 },
 ];
 
@@ -442,11 +442,7 @@ window.addEventListener("keydown", (e) => {
       } else {
         const npc = nearestNPC();
         if (npc) {
-          if (isDialogueOpen()) {
-            closeDialogue();
-          } else {
-            openDialogue(npc.npcId);
-          }
+          interactWithNPC(npc.npcId);
         } else {
           const boss = nearestBoss();
           if (boss) {
@@ -662,7 +658,8 @@ function update(dt) {
     promptEl.textContent = isStorageOpen() ? "Press E to close" : "Press E to open Chest";
     promptEl.style.display = "block";
   } else if (nearNPC) {
-    promptEl.textContent = `Press E to talk to ${NPC_DEFS[nearNPC.npcId].name}`;
+    const npcDef = NPC_DEFS[nearNPC.npcId];
+    promptEl.textContent = npcDef.shop ? `Press E to trade with ${npcDef.name}` : `Press E to talk to ${npcDef.name}`;
     promptEl.style.display = "block";
   } else if (nearBoss) {
     promptEl.textContent = `Press E to challenge ${BOSS_DEFS[nearBoss.bossId].name}`;

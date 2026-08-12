@@ -116,6 +116,21 @@
         </div>
       </div>
 
+      <div id="shop-modal" class="modal">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span>Village Trader</span>
+            <button id="shop-close-btn" class="close-btn">&times;</button>
+          </div>
+          <div class="filter-row">
+            <button class="filter-btn active" data-shop-tab="buy">Buy</button>
+            <button class="filter-btn" data-shop-tab="sell">Sell</button>
+          </div>
+          <div id="shop-list" class="craft-list"></div>
+          <p class="modal-hint">You have <span id="shop-gold">0</span> 🪙</p>
+        </div>
+      </div>
+
       <div id="worldmap-modal" class="modal">
         <div class="modal-box map-box">
           <div class="modal-header">
@@ -236,6 +251,7 @@
   <script src="combat.js"></script>
   <script src="npcs.js"></script>
   <script src="quests.js"></script>
+  <script src="shop.js"></script>
   <script src="game.js"></script>
   <script src="touch-controls.js"></script>
 </body>
