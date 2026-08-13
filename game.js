@@ -44,6 +44,8 @@ const T = {
   ALTAR: 26,
   HIDDEN_DUNGEON_ENTRANCE: 27,
   LOCKED_DOOR: 28,
+  FENCE: 29,
+  GATE: 30,
 };
 
 const SOLID_TILES = new Set([
@@ -65,6 +67,8 @@ const SOLID_TILES = new Set([
   T.ALTAR,
   T.HIDDEN_DUNGEON_ENTRANCE,
   T.LOCKED_DOOR,
+  T.FENCE,
+  T.GATE,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -106,6 +110,37 @@ const VILLAGE_HOUSE_POSITIONS = [
 ];
 // Where the altar sits in every world's village square.
 const ALTAR_POS = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y - 2 };
+// World 1 only (see buildWorld() in world.js): the 4 gates set into the
+// village's perimeter fence, centered on each edge of VILLAGE_BOUNDS.
+const VILLAGE_GATES = {
+  north: { x: WORLD_CENTER_X, y: VILLAGE_BOUNDS.y0 },
+  south: { x: WORLD_CENTER_X, y: VILLAGE_BOUNDS.y1 },
+  east: { x: VILLAGE_BOUNDS.x1, y: WORLD_CENTER_Y },
+  west: { x: VILLAGE_BOUNDS.x0, y: WORLD_CENTER_Y },
+};
+
+// Mutates all 4 gate tiles back to plain village ground — the same
+// "mutate the map in place" trick already used for the locked dungeon door
+// and depleted resources. World 1's overworld is always registered under the
+// unprefixed "overworld" id, so this doesn't need a level id passed in.
+function openVillageGates() {
+  Object.values(VILLAGE_GATES).forEach((gate) => {
+    levels.overworld.map[gate.y][gate.x] = T.VILLAGE_GROUND;
+  });
+}
+
+// Called from npcs.js's interactWithNPC() right after a new NPC is met.
+// Returns true only on the call that actually completes the quest, so the
+// caller can fold a "the gates have opened" line onto that same message
+// instead of popping a second dialogue on top of it.
+function checkVillageGatesQuest() {
+  if (questState.meet_villagers === "completed") return false;
+  if (!objectiveMet(QUEST_DEFS.meet_villagers.objective)) return false;
+  questState.meet_villagers = "completed";
+  openVillageGates();
+  if (isQuestPanelOpen()) renderQuestPanel();
+  return true;
+}
 // Where each world's hidden final-boss dungeon appears once revealed — the
 // forest zone (west), well outside the central valley/village.
 const FINAL_DUNGEON_POS = { x: WORLD_CENTER_X - 25, y: WORLD_CENTER_Y };
@@ -724,8 +759,12 @@ const ROOM_REVEAL_STEP_DELAY = 90; // ms between each column of the dramatic bos
 // module-level `revealed` var) so a mid-sweep level change can't make later
 // steps write into the wrong level's revealed set.
 function revealRoomDramatically(room, entryX, targetRevealed) {
+  // Sweeps one tile of wall past each edge too (not just the room's own
+  // floor), so the reveal shows the room as a complete, bounded space —
+  // rooms are always placed with at least 1 tile of clearance from the
+  // maze's outer edge, so this never runs off the map.
   const columns = [];
-  for (let x = room.x; x < room.x + room.w; x++) columns.push(x);
+  for (let x = room.x - 1; x <= room.x + room.w; x++) columns.push(x);
   columns.sort((a, b) => Math.abs(a - entryX) - Math.abs(b - entryX));
 
   const levelIdAtTrigger = currentLevelId; // same staleness guard as targetRevealed, for the flash below
@@ -736,7 +775,7 @@ function revealRoomDramatically(room, entryX, targetRevealed) {
       return;
     }
     const x = columns[i];
-    for (let y = room.y; y < room.y + room.h; y++) targetRevealed.add(key(x, y));
+    for (let y = room.y - 1; y <= room.y + room.h; y++) targetRevealed.add(key(x, y));
     setTimeout(() => revealNextColumn(i + 1), ROOM_REVEAL_STEP_DELAY);
   }
   revealNextColumn(0);
@@ -1009,6 +1048,7 @@ function baseTileFor(t) {
   if (t === T.NPC) return T.FLOOR;
   if (t === T.HIDDEN_DUNGEON_ENTRANCE) return T.FOREST_GROUND;
   if (t === T.LOCKED_DOOR) return T.DUNGEON_FLOOR; // only ever placed inside maze ("dungeon"-type) interiors
+  if (t === T.GATE) return T.VILLAGE_GROUND;
   return t;
 }
 
@@ -1040,6 +1080,8 @@ function tileColor(t) {
       return "#d9c9a0";
     case T.VILLAGE_GROUND:
       return "#cbb27e";
+    case T.FENCE:
+      return "#6b4a2e";
     default:
       return "#4a7c3a";
   }
@@ -1273,6 +1315,13 @@ function drawLockedDoor(px, py) {
   ctx.fillText("🔒", px + TILE / 2, py + TILE / 2 + 1);
 }
 
+function drawGate(px, py) {
+  ctx.font = "22px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🚧", px + TILE / 2, py + TILE / 2 + 1);
+}
+
 const TILE_SPRITES = {
   [T.TREE]: drawTree,
   [T.ROCK]: drawRock,
@@ -1289,6 +1338,7 @@ const TILE_SPRITES = {
   [T.ALTAR]: drawAltar,
   [T.HIDDEN_DUNGEON_ENTRANCE]: drawHiddenDungeonEntrance,
   [T.LOCKED_DOOR]: drawLockedDoor,
+  [T.GATE]: drawGate,
 };
 
 function drawPlayer(px, py) {
@@ -1431,6 +1481,7 @@ function loop(now) {
 }
 
 addItem("healing_potion", 10);
+questState.meet_villagers = "accepted"; // the training quest is auto-active, no giver — see checkVillageGatesQuest()
 
 renderCharacterPanel();
 refreshHud();

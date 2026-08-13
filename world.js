@@ -18,6 +18,21 @@ function buildWorld(worldNumber) {
   const overworldLevel = buildOverworld();
   const overworldLevelId = levelId("overworld");
 
+  // World 1 only: fence the village in on all 4 sides as an initial training
+  // quest (see checkVillageGatesQuest() in game.js) — later worlds' villages
+  // stay open exactly as buildOverworld() already leaves them.
+  if (worldNumber === 1) {
+    for (let y = VILLAGE_BOUNDS.y0; y <= VILLAGE_BOUNDS.y1; y++) {
+      for (let x = VILLAGE_BOUNDS.x0; x <= VILLAGE_BOUNDS.x1; x++) {
+        const onBorder = x === VILLAGE_BOUNDS.x0 || x === VILLAGE_BOUNDS.x1 || y === VILLAGE_BOUNDS.y0 || y === VILLAGE_BOUNDS.y1;
+        if (onBorder) overworldLevel.map[y][x] = T.FENCE;
+      }
+    }
+    Object.values(VILLAGE_GATES).forEach((gate) => {
+      overworldLevel.map[gate.y][gate.x] = T.GATE;
+    });
+  }
+
   // World 1 keeps its original fixed boss ids (already tested, already has
   // gear-drop items configured); every later world gets its own prefixed
   // clones so checkpoints never leak between worlds.

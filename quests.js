@@ -16,6 +16,16 @@ const QUEST_DEFS = {
       completed: "Thanks again for your help, traveler.",
     },
   },
+  // No giverId/dialogue — never reached through the normal NPC-dialogue
+  // offer/accept flow. Auto-accepted at game boot (game.js) and completed
+  // directly by checkVillageGatesQuest() the moment every listed NPC has
+  // been met, the same "completes outside the dialogue system" precedent
+  // defeat_bosses already established for the altar.
+  meet_villagers: {
+    id: "meet_villagers",
+    name: "Meet the Village",
+    objective: { type: "talk_to_npcs", npcIds: ["village_elder", "village_trader"] },
+  },
 };
 
 let questState = {}; // questId -> "accepted" | "completed" (absent = not yet offered)
@@ -28,6 +38,9 @@ function objectiveProgress(objective) {
   if (objective.type === "defeat_bosses") {
     return { have: objective.bossIds.filter((id) => bossDefeated[id]).length, need: objective.bossIds.length };
   }
+  if (objective.type === "talk_to_npcs") {
+    return { have: objective.npcIds.filter((id) => npcsMet[id]).length, need: objective.npcIds.length };
+  }
   return { have: 0, need: 0 };
 }
 
@@ -39,6 +52,7 @@ function objectiveMet(objective) {
 function objectiveLabel(objective) {
   const { have, need } = objectiveProgress(objective);
   if (objective.type === "defeat_bosses") return `${Math.min(have, need)}/${need} Guardians`;
+  if (objective.type === "talk_to_npcs") return `${Math.min(have, need)}/${need} Villagers`;
   const def = getItemDef(objective.itemId);
   return `${Math.min(have, need)}/${need} ${def.name}`;
 }
