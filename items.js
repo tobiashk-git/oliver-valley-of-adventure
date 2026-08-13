@@ -189,6 +189,20 @@ const ITEM_DEFS = {
     // deliberately no `value` — a quest item, not sellable (mirrors how
     // bone_greatsword/royal_plate are kept out of the shop's own stock list)
   },
+  dungeon_key: {
+    id: "dungeon_key",
+    name: "Ancient Key",
+    icon: "🗝️",
+    type: "material",
+    rarity: "RARE",
+    stackable: true,
+    maxStack: 5,
+    // deliberately no `value` — a quest item, not sellable (see magic_crystal)
+    foundMessage: {
+      title: "Critical Item",
+      text: "You found the Ancient Key! It should open the locked door guarding the final boss's chamber.",
+    },
+  },
 };
 
 function getItemDef(itemId) {

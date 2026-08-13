@@ -43,6 +43,7 @@ const T = {
   NPC: 25,
   ALTAR: 26,
   HIDDEN_DUNGEON_ENTRANCE: 27,
+  LOCKED_DOOR: 28,
 };
 
 const SOLID_TILES = new Set([
@@ -63,6 +64,7 @@ const SOLID_TILES = new Set([
   T.NPC,
   T.ALTAR,
   T.HIDDEN_DUNGEON_ENTRANCE,
+  T.LOCKED_DOOR,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -262,6 +264,156 @@ function buildInterior({ width, height, wallTile, floorTile, chests, boss }) {
   };
 }
 
+// Builds a roguelike-style maze interior: 5 rooms carved out of solid wall and
+// connected by winding corridors, with the room furthest from the entrance
+// holding the boss. Returns the same shape buildInterior() does (doorX/doorY/
+// spawnX/spawnY etc.) plus a `revealed` tile set, which is what marks a level
+// as fog-of-war-active (see isRevealed()/render()) — callers that don't want
+// fog just keep using buildInterior(), which never sets that field.
+function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, lockedDoorKeyId, dramaticBossReveal }) {
+  const ROOM_COUNT = 5;
+  const ROOM_MIN = 3;
+  const ROOM_MAX = 5;
+  const ROOM_PADDING = 1; // minimum gap kept between rooms so they don't visually merge
+
+  const map = [];
+  for (let y = 0; y < height; y++) map.push(new Array(width).fill(wallTile));
+
+  function randInt(min, max) {
+    return min + Math.floor(Math.random() * (max - min + 1));
+  }
+
+  function overlaps(a, b, padding) {
+    return (
+      a.x - padding < b.x + b.w &&
+      a.x + a.w + padding > b.x &&
+      a.y - padding < b.y + b.h &&
+      a.y + a.h + padding > b.y
+    );
+  }
+
+  function tryPlaceRoom(yMin, yMax, existing) {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const w = randInt(ROOM_MIN, ROOM_MAX);
+      const h = randInt(ROOM_MIN, ROOM_MAX);
+      const x = randInt(1, width - 1 - w);
+      const y = randInt(yMin, Math.max(yMin, Math.min(yMax, height - 1 - h)));
+      const candidate = { x, y, w, h };
+      if (existing.every((r) => !overlaps(candidate, r, ROOM_PADDING))) return candidate;
+    }
+    // Extremely unlikely at this grid size, but generation must never hang.
+    return { x: randInt(1, width - 1 - ROOM_MIN), y: randInt(yMin, yMax), w: ROOM_MIN, h: ROOM_MIN };
+  }
+
+  function roomCenter(room) {
+    return { x: room.x + Math.floor(room.w / 2), y: room.y + Math.floor(room.h / 2) };
+  }
+
+  function carveRoom(room) {
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) map[y][x] = floorTile;
+    }
+  }
+
+  function carveCorridor(from, to) {
+    let { x, y } = from;
+    let steps = 0;
+    const maxSteps = width + height + 40; // safety cap — carving must never hang
+    while ((x !== to.x || y !== to.y) && steps < maxSteps) {
+      map[y][x] = floorTile;
+      const moveX = x !== to.x && (y === to.y || Math.random() < 0.5);
+      if (moveX) x += Math.sign(to.x - x);
+      else y += Math.sign(to.y - y);
+      map[y][x] = floorTile;
+      if (Math.random() < 0.15) {
+        // occasional sideways jog so corridors read as winding, not ruler-straight
+        x = Math.max(1, Math.min(width - 2, x + (Math.random() < 0.5 ? -1 : 1)));
+      }
+      steps++;
+    }
+    map[to.y][to.x] = floorTile;
+  }
+
+  // Entrance room: lower band of the grid, so the door sits naturally at the bottom.
+  const entranceRoom = tryPlaceRoom(Math.floor(height * 0.65), height - 1 - ROOM_MIN, []);
+  const rooms = [entranceRoom];
+  for (let i = 0; i < ROOM_COUNT - 1; i++) rooms.push(tryPlaceRoom(1, height - 1 - ROOM_MIN, rooms));
+  rooms.forEach(carveRoom);
+
+  const doorX = Math.max(1, Math.min(width - 2, roomCenter(entranceRoom).x));
+  const doorY = height - 1;
+  carveCorridor(roomCenter(entranceRoom), { x: doorX, y: doorY - 1 });
+  map[doorY][doorX] = T.DOOR;
+
+  // Chain the other 4 rooms in order of distance from the entrance, so the
+  // corridor path deepens naturally and the furthest room reads as "the depths."
+  const others = rooms.slice(1);
+  const entranceCenter = roomCenter(entranceRoom);
+  others.sort((a, b) => {
+    const ca = roomCenter(a);
+    const cb = roomCenter(b);
+    return Math.hypot(ca.x - entranceCenter.x, ca.y - entranceCenter.y) - Math.hypot(cb.x - entranceCenter.x, cb.y - entranceCenter.y);
+  });
+  let prevCenter = entranceCenter;
+  others.forEach((room) => {
+    const c = roomCenter(room);
+    carveCorridor(prevCenter, c);
+    prevCenter = c;
+  });
+
+  const bossRoom = others[others.length - 1];
+  const intermediateRooms = others.slice(0, -1);
+
+  // Offset from the room's center — the corridor always connects at the exact
+  // center, so anything stamped there would seal the room's only entrance.
+  const bossCenter = roomCenter(bossRoom);
+  const bossX = bossRoom.x + bossRoom.w - 1;
+  map[bossCenter.y][bossX] = T.BOSS;
+  const bossTile = { x: bossX, y: bossCenter.y, bossId };
+
+  // The corridor always enters a room at its exact center (see carveCorridor
+  // above) — stamping the locked door there blocks the boss room's only
+  // entrance until the key is used, without touching the boss's own tile.
+  let lockedDoor = null;
+  if (lockedDoorKeyId) {
+    map[bossCenter.y][bossCenter.x] = T.LOCKED_DOOR;
+    lockedDoor = { x: bossCenter.x, y: bossCenter.y, keyId: lockedDoorKeyId };
+  }
+
+  const chestTiles = [];
+  (chests || []).forEach((chest, i) => {
+    const room = intermediateRooms[i % Math.max(1, intermediateRooms.length)];
+    if (!room) return;
+    const center = roomCenter(room);
+    const cx = Math.max(room.x, Math.min(room.x + room.w - 1, center.x + (i % 2 === 0 ? -1 : 1)));
+    map[center.y][cx] = T.CHEST;
+    chestTiles.push({ x: cx, y: center.y, storageId: chest.storageId });
+    createFilledStorage(chest.storageId, chest.name, 10, "gold", chest.gold);
+    if (chest.extraItem) addToSlots(storages[chest.storageId].slots, chest.extraItem.itemId, chest.extraItem.amount);
+  });
+
+  return {
+    map,
+    width,
+    height,
+    resources: new Map(),
+    chestTiles,
+    bossTile,
+    lockedDoor,
+    bossRoom: { x: bossRoom.x, y: bossRoom.y, w: bossRoom.w, h: bossRoom.h },
+    bossRoomEntryX: bossCenter.x,
+    // Consumed (set false) the first time the player steps into the room —
+    // see revealRoomDramatically()/update() — so the sweep only ever plays once.
+    bossRoomRevealPending: !!dramaticBossReveal,
+    portals: [],
+    doorX,
+    doorY,
+    spawnX: doorX * TILE + TILE / 2,
+    spawnY: (doorY - 1) * TILE + TILE / 2,
+    revealed: new Set(), // presence of this field is what marks the level fog-of-war-active
+  };
+}
+
 // `levels`/`bossDefeated` start empty and get populated by buildWorld() (see
 // world.js) — called once for World 1 right below, and again later (at
 // runtime, via the altar) for each subsequent world.
@@ -279,7 +431,9 @@ const houseLevel = levels.house;
 
 let currentLevelId = null;
 let currentWorld = 1;
-let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile, altarTile;
+let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX;
+let lastPlayerTileX = null;
+let lastPlayerTileY = null;
 
 function activateLevel(levelId, spawnX, spawnY) {
   currentLevelId = levelId;
@@ -293,10 +447,20 @@ function activateLevel(levelId, spawnX, spawnY) {
   bossTile = lvl.bossTile;
   npcTile = lvl.npcTile;
   altarTile = lvl.altarTile;
+  revealed = lvl.revealed;
+  lockedDoor = lvl.lockedDoor;
+  bossRoom = lvl.bossRoom;
+  bossRoomEntryX = lvl.bossRoomEntryX;
   if (spawnX !== undefined) {
     player.x = spawnX;
     player.y = spawnY;
   }
+  // Forces update()'s tile-change check to fire on the very next frame — needed
+  // so a fog-of-war level reveals its spawn tile immediately instead of staying
+  // black for a frame (and incidentally makes that check robust to a new
+  // level's spawn tile numerically matching wherever the player last was).
+  lastPlayerTileX = null;
+  lastPlayerTileY = null;
   closeStorage();
   if (levelId in discoveredPOIs) discoveredPOIs[levelId] = true;
   // Suffix checks (not exact match) so this still applies to later worlds'
@@ -361,13 +525,22 @@ window.addEventListener("keydown", (e) => {
               interactWithAltar(altar);
             }
           } else {
-            const boss = nearestBoss();
-            if (boss) {
-              startBossFight(boss.bossId);
+            const lockedDoorNearby = nearestLockedDoor();
+            if (lockedDoorNearby) {
+              if (isDialogueOpen()) {
+                closeDialogue();
+              } else {
+                interactWithLockedDoor(lockedDoorNearby);
+              }
             } else {
-              const portal = nearestPortal();
-              if (portal) {
-                activateLevel(portal.toLevelId, portal.toX, portal.toY);
+              const boss = nearestBoss();
+              if (boss) {
+                startBossFight(boss.bossId);
+              } else {
+                const portal = nearestPortal();
+                if (portal) {
+                  activateLevel(portal.toLevelId, portal.toX, portal.toY);
+                }
               }
             }
           }
@@ -425,6 +598,49 @@ function canMoveTo(x, y) {
     [x + half, y + half],
   ];
   return corners.every(([cx, cy]) => !isSolid(cx, cy));
+}
+
+// ---------------------------------------------------------------------------
+// Fog of war — only active on levels whose `revealed` field is set (the maze
+// interiors built by buildDungeonMaze()). Gates rendering only, not collision
+// — unseen walls still block movement, exactly like real fog of war.
+// ---------------------------------------------------------------------------
+
+const FOG_REVEAL_RADIUS = 2;
+
+function revealTilesAround(centerX, centerY) {
+  for (let dy = -FOG_REVEAL_RADIUS; dy <= FOG_REVEAL_RADIUS; dy++) {
+    for (let dx = -FOG_REVEAL_RADIUS; dx <= FOG_REVEAL_RADIUS; dx++) {
+      if (dx * dx + dy * dy > FOG_REVEAL_RADIUS * FOG_REVEAL_RADIUS) continue;
+      revealed.add(key(centerX + dx, centerY + dy));
+    }
+  }
+}
+
+function isRevealed(tx, ty) {
+  return !revealed || revealed.has(key(tx, ty));
+}
+
+const ROOM_REVEAL_STEP_DELAY = 90; // ms between each column of the dramatic boss-room sweep
+
+// One-time dramatic reveal for a boss room: sweeps outward column-by-column
+// from the doorway the player just walked through, instead of the normal
+// radius-2 creep — reads as the fog "rolling back" off the whole room at
+// once. `targetRevealed` is captured explicitly (not read live off the
+// module-level `revealed` var) so a mid-sweep level change can't make later
+// steps write into the wrong level's revealed set.
+function revealRoomDramatically(room, entryX, targetRevealed) {
+  const columns = [];
+  for (let x = room.x; x < room.x + room.w; x++) columns.push(x);
+  columns.sort((a, b) => Math.abs(a - entryX) - Math.abs(b - entryX));
+
+  function revealNextColumn(i) {
+    if (i >= columns.length) return;
+    const x = columns[i];
+    for (let y = room.y; y < room.y + room.h; y++) targetRevealed.add(key(x, y));
+    setTimeout(() => revealNextColumn(i + 1), ROOM_REVEAL_STEP_DELAY);
+  }
+  revealNextColumn(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +731,32 @@ function nearestAltar() {
   return dist <= TILE * 1.3 ? altarTile : null;
 }
 
+// Checks the live map tile (not just the presence of `lockedDoor`) so the door
+// stops being interactable the moment it's unlocked — mirrors how resources
+// stop being gatherable once their tile is mutated back to plain ground.
+function nearestLockedDoor() {
+  if (!lockedDoor || map[lockedDoor.y][lockedDoor.x] !== T.LOCKED_DOOR) return null;
+  const cx = lockedDoor.x * TILE + TILE / 2;
+  const cy = lockedDoor.y * TILE + TILE / 2;
+  const dist = Math.hypot(cx - player.x, cy - player.y);
+  return dist <= TILE * 1.3 ? lockedDoor : null;
+}
+
+// Backpack-only check (getItemCount/removeItem), not the pooled
+// getResourceCount/removeResource every other material uses — the key is
+// pre-seeded into a chest's storage at world-generation time, so pooling
+// would count it as "possessed" before the player ever finds it. Requiring
+// it in the backpack means the player must actually loot it first.
+function interactWithLockedDoor(door) {
+  if (getItemCount(door.keyId) >= 1) {
+    removeItem(door.keyId, 1);
+    map[door.y][door.x] = baseTileFor(T.LOCKED_DOOR);
+    showMessage("Locked Door", "You use the Ancient Key to unlock the door. It swings open, revealing the chamber beyond.");
+  } else {
+    showMessage("Locked Door", "This door is locked tight. You'll need to find a key.");
+  }
+}
+
 function nearestPortal() {
   for (const portal of portals) {
     const cx = portal.x * TILE + TILE / 2;
@@ -530,8 +772,6 @@ function nearestPortal() {
 // ---------------------------------------------------------------------------
 
 let lastTime = performance.now();
-let lastPlayerTileX = null;
-let lastPlayerTileY = null;
 
 function update(dt) {
   if (inCombat) return;
@@ -569,6 +809,18 @@ function update(dt) {
   if (tileX !== lastPlayerTileX || tileY !== lastPlayerTileY) {
     lastPlayerTileX = tileX;
     lastPlayerTileY = tileY;
+    if (revealed) revealTilesAround(tileX, tileY);
+    if (
+      bossRoom &&
+      levels[currentLevelId].bossRoomRevealPending &&
+      tileX >= bossRoom.x &&
+      tileX < bossRoom.x + bossRoom.w &&
+      tileY >= bossRoom.y &&
+      tileY < bossRoom.y + bossRoom.h
+    ) {
+      levels[currentLevelId].bossRoomRevealPending = false;
+      revealRoomDramatically(bossRoom, bossRoomEntryX, revealed);
+    }
     if (ENCOUNTER_ELIGIBLE_TILES.has(map[tileY][tileX])) {
       checkRandomEncounter();
       if (inCombat) return;
@@ -579,8 +831,9 @@ function update(dt) {
   const nearChest = near ? null : nearestChest();
   const nearNPC = near || nearChest ? null : nearestNPC();
   const nearAltar = near || nearChest || nearNPC ? null : nearestAltar();
-  const nearBoss = near || nearChest || nearNPC || nearAltar ? null : nearestBoss();
-  const nearPortal = near || nearChest || nearNPC || nearAltar || nearBoss ? null : nearestPortal();
+  const nearLockedDoor = near || nearChest || nearNPC || nearAltar ? null : nearestLockedDoor();
+  const nearBoss = near || nearChest || nearNPC || nearAltar || nearLockedDoor ? null : nearestBoss();
+  const nearPortal = near || nearChest || nearNPC || nearAltar || nearLockedDoor || nearBoss ? null : nearestPortal();
   if (near) {
     const itemDef = getItemDef(near.res.itemId);
     promptEl.textContent = `Press E to gather ${itemDef.name}`;
@@ -594,6 +847,9 @@ function update(dt) {
     promptEl.style.display = "block";
   } else if (nearAltar) {
     promptEl.textContent = "Press E to use the Altar";
+    promptEl.style.display = "block";
+  } else if (nearLockedDoor) {
+    promptEl.textContent = "Press E to open the locked door";
     promptEl.style.display = "block";
   } else if (nearBoss) {
     promptEl.textContent = `Press E to challenge ${BOSS_DEFS[nearBoss.bossId].name}`;
@@ -629,6 +885,7 @@ function baseTileFor(t) {
   if (t === T.HOUSE_ENTRANCE || t === T.ALTAR) return T.VILLAGE_GROUND;
   if (t === T.NPC) return T.FLOOR;
   if (t === T.HIDDEN_DUNGEON_ENTRANCE) return T.FOREST_GROUND;
+  if (t === T.LOCKED_DOOR) return T.DUNGEON_FLOOR; // only ever placed inside maze ("dungeon"-type) interiors
   return t;
 }
 
@@ -883,6 +1140,15 @@ function drawHiddenDungeonEntrance(px, py) {
   ctx.fillText("🌋", px + TILE / 2, py + TILE / 2 + 1);
 }
 
+function drawLockedDoor(px, py) {
+  ctx.fillStyle = "#3a2a1a";
+  ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
+  ctx.font = "20px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🔒", px + TILE / 2, py + TILE / 2 + 1);
+}
+
 const TILE_SPRITES = {
   [T.TREE]: drawTree,
   [T.ROCK]: drawRock,
@@ -898,6 +1164,7 @@ const TILE_SPRITES = {
   [T.NPC]: drawNpc,
   [T.ALTAR]: drawAltar,
   [T.HIDDEN_DUNGEON_ENTRANCE]: drawHiddenDungeonEntrance,
+  [T.LOCKED_DOOR]: drawLockedDoor,
 };
 
 function drawPlayer(px, py) {
@@ -972,9 +1239,14 @@ function render() {
   for (let ty = startTy; ty < endTy; ty++) {
     for (let tx = startTx; tx < endTx; tx++) {
       if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) continue;
-      const t = map[ty][tx];
       const px = tx * TILE - camX;
       const py = ty * TILE - camY;
+      if (!isRevealed(tx, ty)) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(px, py, TILE, TILE);
+        continue;
+      }
+      const t = map[ty][tx];
       ctx.fillStyle = tileColor(baseTileFor(t));
       ctx.fillRect(px, py, TILE, TILE);
     }
@@ -985,6 +1257,7 @@ function render() {
   for (let ty = startTy; ty < endTy; ty++) {
     for (let tx = startTx; tx < endTx; tx++) {
       if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) continue;
+      if (!isRevealed(tx, ty)) continue;
       const t = map[ty][tx];
       const spriteFn = TILE_SPRITES[t];
       if (spriteFn) {

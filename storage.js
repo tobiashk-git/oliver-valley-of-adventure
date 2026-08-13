@@ -117,9 +117,12 @@ function renderStoragePanel() {
   document.getElementById("storage-title").textContent = storage.name;
 
   buildSlotGrid(document.getElementById("chest-grid"), storage.slots, (index) => {
+    const slot = storage.slots[index];
+    const foundMessage = slot ? getItemDef(slot.itemId).foundMessage : null;
     transferSlot(storage.slots, inventory.slots, index);
     renderStoragePanel();
     refreshHud();
+    if (foundMessage) showMessage(foundMessage.title, foundMessage.text);
   });
 
   buildSlotGrid(document.getElementById("backpack-grid"), inventory.slots, (index) => {

@@ -30,40 +30,47 @@ function buildWorld(worldNumber) {
   }
   registerBoss(finalBossId, FINAL_BOSS_TEMPLATE);
 
-  const dungeonLevel = buildInterior({
-    width: 9,
-    height: 7,
+  const dungeonLevel = buildDungeonMaze({
+    width: 31,
+    height: 21,
     wallTile: T.DUNGEON_WALL,
     floorTile: T.DUNGEON_FLOOR,
     chests: [
-      { x: 2, y: 2, storageId: levelId("dungeon_chest_1"), name: "Old Chest", gold: 15 },
-      { x: 6, y: 2, storageId: levelId("dungeon_chest_2"), name: "Iron Chest", gold: 20 },
+      { storageId: levelId("dungeon_chest_1"), name: "Old Chest", gold: 15 },
+      {
+        storageId: levelId("dungeon_chest_2"),
+        name: "Iron Chest",
+        gold: 20,
+        extraItem: { itemId: "dungeon_key", amount: 1 },
+      },
     ],
-    boss: { x: 4, y: 2, bossId: dungeonBossId },
+    bossId: dungeonBossId,
   });
 
-  const castleLevel = buildInterior({
-    width: 11,
-    height: 8,
+  const castleLevel = buildDungeonMaze({
+    width: 31,
+    height: 21,
     wallTile: T.CASTLE_WALL,
     floorTile: T.CASTLE_FLOOR,
     chests: [
-      { x: 2, y: 2, storageId: levelId("castle_chest_1"), name: "Royal Coffer", gold: 40 },
-      { x: 9, y: 2, storageId: levelId("castle_chest_2"), name: "Treasury Chest", gold: 60 },
+      { storageId: levelId("castle_chest_1"), name: "Royal Coffer", gold: 40 },
+      { storageId: levelId("castle_chest_2"), name: "Treasury Chest", gold: 60 },
     ],
-    boss: { x: 5, y: 2, bossId: castleBossId },
+    bossId: castleBossId,
   });
 
   // The hidden final-boss dungeon: built now so it fully exists, but not
   // linked to the overworld until the altar reveals it (see revealFinalBoss).
   const finalBossLevelId = levelId("final_dungeon");
-  const finalBossLevel = buildInterior({
-    width: 11,
-    height: 9,
+  const finalBossLevel = buildDungeonMaze({
+    width: 31,
+    height: 21,
     wallTile: T.DUNGEON_WALL,
     floorTile: T.DUNGEON_FLOOR,
     chests: [],
-    boss: { x: 5, y: 4, bossId: finalBossId },
+    bossId: finalBossId,
+    lockedDoorKeyId: "dungeon_key",
+    dramaticBossReveal: true,
   });
   finalBossLevel.portals.push({
     x: finalBossLevel.doorX,
