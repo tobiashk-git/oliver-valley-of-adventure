@@ -274,6 +274,8 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
   const ROOM_COUNT = 5;
   const ROOM_MIN = 3;
   const ROOM_MAX = 5;
+  const BOSS_ROOM_MIN = 6; // noticeably bigger than a regular room — a real chamber, not just another stop
+  const BOSS_ROOM_MAX = 8;
   const ROOM_PADDING = 1; // minimum gap kept between rooms so they don't visually merge
 
   const map = [];
@@ -292,17 +294,40 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
     );
   }
 
-  function tryPlaceRoom(yMin, yMax, existing) {
+  function tryPlaceRoom(yMin, yMax, existing, minSize = ROOM_MIN, maxSize = ROOM_MAX) {
     for (let attempt = 0; attempt < 200; attempt++) {
-      const w = randInt(ROOM_MIN, ROOM_MAX);
-      const h = randInt(ROOM_MIN, ROOM_MAX);
+      const w = randInt(minSize, maxSize);
+      const h = randInt(minSize, maxSize);
       const x = randInt(1, width - 1 - w);
       const y = randInt(yMin, Math.max(yMin, Math.min(yMax, height - 1 - h)));
       const candidate = { x, y, w, h };
       if (existing.every((r) => !overlaps(candidate, r, ROOM_PADDING))) return candidate;
     }
     // Extremely unlikely at this grid size, but generation must never hang.
-    return { x: randInt(1, width - 1 - ROOM_MIN), y: randInt(yMin, yMax), w: ROOM_MIN, h: ROOM_MIN };
+    return { x: randInt(1, width - 1 - minSize), y: randInt(yMin, yMax), w: minSize, h: minSize };
+  }
+
+  // Like tryPlaceRoom, but tries several candidates and keeps whichever valid
+  // one lands furthest from `anchor` — used for the boss room, so it reads as
+  // "the depths of the dungeon" rather than wherever happened to fit.
+  function tryPlaceFarRoom(yMin, yMax, existing, anchor, minSize, maxSize) {
+    let best = null;
+    let bestDist = -1;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const w = randInt(minSize, maxSize);
+      const h = randInt(minSize, maxSize);
+      const x = randInt(1, width - 1 - w);
+      const y = randInt(yMin, Math.max(yMin, Math.min(yMax, height - 1 - h)));
+      const candidate = { x, y, w, h };
+      if (!existing.every((r) => !overlaps(candidate, r, ROOM_PADDING))) continue;
+      const c = { x: candidate.x + Math.floor(w / 2), y: candidate.y + Math.floor(h / 2) };
+      const dist = Math.hypot(c.x - anchor.x, c.y - anchor.y);
+      if (dist > bestDist) {
+        bestDist = dist;
+        best = candidate;
+      }
+    }
+    return best || tryPlaceRoom(yMin, yMax, existing, minSize, maxSize);
   }
 
   function roomCenter(room) {
@@ -337,29 +362,42 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
   // Entrance room: lower band of the grid, so the door sits naturally at the bottom.
   const entranceRoom = tryPlaceRoom(Math.floor(height * 0.65), height - 1 - ROOM_MIN, []);
   const rooms = [entranceRoom];
-  for (let i = 0; i < ROOM_COUNT - 1; i++) rooms.push(tryPlaceRoom(1, height - 1 - ROOM_MIN, rooms));
+  const entranceCenter = roomCenter(entranceRoom);
+
+  // 3 regular-sized intermediate rooms.
+  const intermediateRooms = [];
+  for (let i = 0; i < ROOM_COUNT - 2; i++) {
+    const r = tryPlaceRoom(1, height - 1 - ROOM_MIN, rooms);
+    rooms.push(r);
+    intermediateRooms.push(r);
+  }
+
+  // Boss room: bigger, and deliberately placed as far from the entrance as
+  // the maze allows (not just "whichever room ended up furthest").
+  const bossRoom = tryPlaceFarRoom(1, height - 1 - BOSS_ROOM_MIN, rooms, entranceCenter, BOSS_ROOM_MIN, BOSS_ROOM_MAX);
+  rooms.push(bossRoom);
+
   rooms.forEach(carveRoom);
 
-  const doorX = Math.max(1, Math.min(width - 2, roomCenter(entranceRoom).x));
+  const doorX = Math.max(1, Math.min(width - 2, entranceCenter.x));
   const doorY = height - 1;
-  carveCorridor(roomCenter(entranceRoom), { x: doorX, y: doorY - 1 });
+  carveCorridor(entranceCenter, { x: doorX, y: doorY - 1 });
   map[doorY][doorX] = T.DOOR;
 
-  // Chain the other 4 rooms in order of distance from the entrance, so the
-  // corridor path deepens naturally and the furthest room reads as "the depths."
-  const others = rooms.slice(1);
-  const entranceCenter = roomCenter(entranceRoom);
-  others.sort((a, b) => {
+  // Chain the intermediate rooms in order of distance from the entrance, so
+  // the corridor path deepens naturally, then finally into the boss room.
+  intermediateRooms.sort((a, b) => {
     const ca = roomCenter(a);
     const cb = roomCenter(b);
     return Math.hypot(ca.x - entranceCenter.x, ca.y - entranceCenter.y) - Math.hypot(cb.x - entranceCenter.x, cb.y - entranceCenter.y);
   });
   let prevCenter = entranceCenter;
-  others.forEach((room) => {
+  intermediateRooms.forEach((room) => {
     const c = roomCenter(room);
     carveCorridor(prevCenter, c);
     prevCenter = c;
   });
+  carveCorridor(prevCenter, roomCenter(bossRoom));
 
   function isWalkableTile(x, y) {
     const t = map[y][x];
@@ -398,8 +436,9 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
   // Placing a chest already mutates its tile away from floorTile, so a second
   // call for the same room naturally skips whatever the first one picked —
   // no separate "already used" bookkeeping needed.
-  function pickSafeSpotInRoom(room) {
+  function pickSafeSpotInRoom(room, preferred) {
     const candidates = [
+      ...(preferred || []),
       { x: room.x, y: room.y },
       { x: room.x + room.w - 1, y: room.y + room.h - 1 },
       { x: room.x + room.w - 1, y: room.y },
@@ -410,13 +449,19 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
     return candidates.find((c) => map[c.y][c.x] === floorTile && wouldStayConnectedIfBlocked(c.x, c.y));
   }
 
-  const bossRoom = others[others.length - 1];
-  const intermediateRooms = others.slice(0, -1);
+  const bossCenter = roomCenter(bossRoom);
 
-  const bossSpot = pickSafeSpotInRoom(bossRoom) || { x: bossRoom.x + bossRoom.w - 1, y: roomCenter(bossRoom).y };
+  // The boss sits at whichever extreme column of the room is farthest from
+  // the corridor connection — which is also always the LAST column the
+  // reveal sweep uncovers (see revealRoomDramatically, sorted by the same
+  // distance-from-entryX), so the boss is the dramatic final thing revealed.
+  const farColumnX =
+    Math.abs(bossRoom.x - bossCenter.x) >= Math.abs(bossRoom.x + bossRoom.w - 1 - bossCenter.x)
+      ? bossRoom.x
+      : bossRoom.x + bossRoom.w - 1;
+  const bossSpot = pickSafeSpotInRoom(bossRoom, [{ x: farColumnX, y: bossCenter.y }]) || { x: farColumnX, y: bossCenter.y };
   map[bossSpot.y][bossSpot.x] = T.BOSS;
   const bossTile = { x: bossSpot.x, y: bossSpot.y, bossId };
-  const bossCenter = roomCenter(bossRoom); // still needed below: the room's corridor-connection point
 
   // The corridor always enters a room at its exact center (see carveCorridor
   // above) — stamping the locked door there blocks the boss room's only
@@ -683,13 +728,42 @@ function revealRoomDramatically(room, entryX, targetRevealed) {
   for (let x = room.x; x < room.x + room.w; x++) columns.push(x);
   columns.sort((a, b) => Math.abs(a - entryX) - Math.abs(b - entryX));
 
+  const levelIdAtTrigger = currentLevelId; // same staleness guard as targetRevealed, for the flash below
+
   function revealNextColumn(i) {
-    if (i >= columns.length) return;
+    if (i >= columns.length) {
+      flashBossReveal(BOSS_FLASH_COUNT, levelIdAtTrigger);
+      return;
+    }
     const x = columns[i];
     for (let y = room.y; y < room.y + room.h; y++) targetRevealed.add(key(x, y));
     setTimeout(() => revealNextColumn(i + 1), ROOM_REVEAL_STEP_DELAY);
   }
   revealNextColumn(0);
+}
+
+// A few bright blinks on the boss's own tile once the sweep finishes — draws
+// the eye to "there it is" at the dramatic moment, the same pacing idea as
+// combat.js's on-map encounter flash. `levelId` guards against a flash
+// meant for one level's boss lingering onto whatever's drawn if the player
+// somehow leaves mid-sequence (drawBoss() checks currentLevelId matches).
+let bossFlashActive = false;
+let bossFlashLevelId = null;
+
+const BOSS_FLASH_COUNT = 3;
+const BOSS_FLASH_DURATION = 150; // ms on/off
+
+function flashBossReveal(remaining, levelId) {
+  if (remaining <= 0) {
+    bossFlashActive = false;
+    return;
+  }
+  bossFlashActive = true;
+  bossFlashLevelId = levelId;
+  setTimeout(() => {
+    bossFlashActive = false;
+    setTimeout(() => flashBossReveal(remaining - 1, levelId), BOSS_FLASH_DURATION);
+  }, BOSS_FLASH_DURATION);
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,10 +1221,11 @@ function drawBoss(px, py) {
   if (!bossTile) return;
   const def = BOSS_DEFS[bossTile.bossId];
   const defeated = bossDefeated[bossTile.bossId];
+  const flashing = bossFlashActive && bossFlashLevelId === currentLevelId;
 
   ctx.save();
   if (defeated) ctx.globalAlpha = 0.4;
-  ctx.fillStyle = defeated ? "#3a3a3a" : "#4a1010";
+  ctx.fillStyle = flashing ? "#f5d347" : defeated ? "#3a3a3a" : "#4a1010";
   ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
   ctx.font = "20px serif";
   ctx.textAlign = "center";

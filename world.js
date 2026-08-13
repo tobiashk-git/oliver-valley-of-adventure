@@ -50,6 +50,7 @@ function buildWorld(worldNumber) {
       },
     ],
     bossId: dungeonBossId,
+    dramaticBossReveal: true,
   });
 
   const castleLevel = buildDungeonMaze({
@@ -67,6 +68,7 @@ function buildWorld(worldNumber) {
       { storageId: levelId("castle_chest_2"), name: "Treasury Chest", gold: 60 },
     ],
     bossId: castleBossId,
+    dramaticBossReveal: true,
   });
 
   // The hidden final-boss dungeon: built now so it fully exists, but not

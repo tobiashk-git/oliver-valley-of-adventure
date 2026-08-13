@@ -1084,6 +1084,18 @@ canvas {
     display: block;
   }
 
+  /* The joystick and interact button sit bottom-left/bottom-right, right
+     where the battle screen's own command row (Attack/Magic/Item/Defend/Run)
+     lives — and both have a higher z-index than .battle-screen, so they'd
+     otherwise float on top of and block those buttons during a fight.
+     Reacts to the same #battle-screen.open class combat.js already toggles
+     on every start/end path, so no JS changes are needed here. The top-right
+     panel buttons stay put — they're not in the way. */
+  body:has(#battle-screen.open) .touch-joystick,
+  body:has(#battle-screen.open) .touch-interact-btn {
+    display: none;
+  }
+
   /* Panels/modals live inside #stage, which is zoomed on small screens along
      with everything else — including these, since fixed-position elements
      aren't immune to an ancestor zoom any more than they're immune to the
