@@ -223,8 +223,11 @@ function beginEncounterAppearance() {
 function positionEncounterMarker() {
   const { camX, camY } = getCamera();
   const marker = document.getElementById("encounter-marker");
-  marker.style.left = `${player.x - camX}px`;
-  marker.style.top = `${player.y - camY - 16}px`;
+  // getCamera()'s coordinates are world-pixel space (pre-zoom); this element
+  // is a plain DOM node, not canvas content, so it needs the zoom applied
+  // explicitly to land in the same spot the (already-zoomed) canvas draws it.
+  marker.style.left = `${(player.x - camX) * cameraZoom}px`;
+  marker.style.top = `${(player.y - camY) * cameraZoom - 16}px`;
 }
 
 function runFlashSequence(remaining) {

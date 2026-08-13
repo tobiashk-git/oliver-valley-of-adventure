@@ -270,7 +270,7 @@ function buildInterior({ width, height, wallTile, floorTile, chests, boss }) {
 // spawnX/spawnY etc.) plus a `revealed` tile set, which is what marks a level
 // as fog-of-war-active (see isRevealed()/render()) — callers that don't want
 // fog just keep using buildInterior(), which never sets that field.
-function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, lockedDoorKeyId, dramaticBossReveal }) {
+function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, lockedDoorKeyId, dramaticBossReveal, cameraZoom }) {
   const ROOM_COUNT = 5;
   const ROOM_MIN = 3;
   const ROOM_MAX = 5;
@@ -361,15 +361,62 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
     prevCenter = c;
   });
 
+  function isWalkableTile(x, y) {
+    const t = map[y][x];
+    return t === floorTile || t === T.DOOR || t === T.BOSS || t === T.CHEST || t === T.LOCKED_DOOR;
+  }
+
+  // A corridor's winding, jog-prone path can cut across a room it isn't even
+  // connecting to (see carveCorridor's random sideways jog) — so a spot that
+  // *looks* safe (a corner, away from this room's own connection point) can
+  // still turn out to be a different corridor's only route through. This
+  // confirms turning (x,y) solid genuinely can't strand anything, by actually
+  // flood-filling from the door and comparing reachable counts.
+  function wouldStayConnectedIfBlocked(x, y) {
+    let totalOther = 0;
+    for (let ty = 0; ty < height; ty++)
+      for (let tx = 0; tx < width; tx++) if (!(tx === x && ty === y) && isWalkableTile(tx, ty)) totalOther++;
+
+    const visited = new Set();
+    const stack = [[doorX, doorY]];
+    while (stack.length) {
+      const [cx, cy] = stack.pop();
+      const k = cx + "," + cy;
+      if (visited.has(k) || cx < 0 || cy < 0 || cx >= width || cy >= height) continue;
+      if (cx === x && cy === y) continue;
+      if (!isWalkableTile(cx, cy)) continue;
+      visited.add(k);
+      stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    }
+    return visited.size === totalOther;
+  }
+
+  // Candidates in preference order: the room's 4 corners first (reads as
+  // "against the wall"), falling back to any other floor tile in the room —
+  // each checked with wouldStayConnectedIfBlocked so nothing is ever placed
+  // somewhere that seals off part of the maze.
+  // Placing a chest already mutates its tile away from floorTile, so a second
+  // call for the same room naturally skips whatever the first one picked —
+  // no separate "already used" bookkeeping needed.
+  function pickSafeSpotInRoom(room) {
+    const candidates = [
+      { x: room.x, y: room.y },
+      { x: room.x + room.w - 1, y: room.y + room.h - 1 },
+      { x: room.x + room.w - 1, y: room.y },
+      { x: room.x, y: room.y + room.h - 1 },
+    ];
+    for (let ry = room.y; ry < room.y + room.h; ry++)
+      for (let rx = room.x; rx < room.x + room.w; rx++) candidates.push({ x: rx, y: ry });
+    return candidates.find((c) => map[c.y][c.x] === floorTile && wouldStayConnectedIfBlocked(c.x, c.y));
+  }
+
   const bossRoom = others[others.length - 1];
   const intermediateRooms = others.slice(0, -1);
 
-  // Offset from the room's center — the corridor always connects at the exact
-  // center, so anything stamped there would seal the room's only entrance.
-  const bossCenter = roomCenter(bossRoom);
-  const bossX = bossRoom.x + bossRoom.w - 1;
-  map[bossCenter.y][bossX] = T.BOSS;
-  const bossTile = { x: bossX, y: bossCenter.y, bossId };
+  const bossSpot = pickSafeSpotInRoom(bossRoom) || { x: bossRoom.x + bossRoom.w - 1, y: roomCenter(bossRoom).y };
+  map[bossSpot.y][bossSpot.x] = T.BOSS;
+  const bossTile = { x: bossSpot.x, y: bossSpot.y, bossId };
+  const bossCenter = roomCenter(bossRoom); // still needed below: the room's corridor-connection point
 
   // The corridor always enters a room at its exact center (see carveCorridor
   // above) — stamping the locked door there blocks the boss room's only
@@ -384,10 +431,10 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
   (chests || []).forEach((chest, i) => {
     const room = intermediateRooms[i % Math.max(1, intermediateRooms.length)];
     if (!room) return;
-    const center = roomCenter(room);
-    const cx = Math.max(room.x, Math.min(room.x + room.w - 1, center.x + (i % 2 === 0 ? -1 : 1)));
-    map[center.y][cx] = T.CHEST;
-    chestTiles.push({ x: cx, y: center.y, storageId: chest.storageId });
+    const spot = pickSafeSpotInRoom(room);
+    if (!spot) return; // no safe tile found (shouldn't happen — the room's own floor is always a valid fallback)
+    map[spot.y][spot.x] = T.CHEST;
+    chestTiles.push({ x: spot.x, y: spot.y, storageId: chest.storageId });
     createFilledStorage(chest.storageId, chest.name, 10, "gold", chest.gold);
     if (chest.extraItem) addToSlots(storages[chest.storageId].slots, chest.extraItem.itemId, chest.extraItem.amount);
   });
@@ -411,6 +458,7 @@ function buildDungeonMaze({ width, height, wallTile, floorTile, chests, bossId, 
     spawnX: doorX * TILE + TILE / 2,
     spawnY: (doorY - 1) * TILE + TILE / 2,
     revealed: new Set(), // presence of this field is what marks the level fog-of-war-active
+    cameraZoom: cameraZoom || 1,
   };
 }
 
@@ -431,7 +479,7 @@ const houseLevel = levels.house;
 
 let currentLevelId = null;
 let currentWorld = 1;
-let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX;
+let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX, cameraZoom;
 let lastPlayerTileX = null;
 let lastPlayerTileY = null;
 
@@ -451,6 +499,7 @@ function activateLevel(levelId, spawnX, spawnY) {
   lockedDoor = lvl.lockedDoor;
   bossRoom = lvl.bossRoom;
   bossRoomEntryX = lvl.bossRoomEntryX;
+  cameraZoom = lvl.cameraZoom || 1;
   if (spawnX !== undefined) {
     player.x = spawnX;
     player.y = spawnY;
@@ -1204,36 +1253,53 @@ function drawPlayer(px, py) {
   }
 }
 
-// Interior levels (house/dungeon/castle) are all smaller than the 800x600
-// view, so clamping the camera to stay within map bounds always resolves to
-// 0 (pinning the map to the top-left) rather than centering it — center it
-// directly instead whenever the map doesn't fill the view. Shared by render()
-// and combat.js's on-map encounter marker, which needs the same camera the
-// world is actually drawn with.
+// Shared by render() and combat.js's on-map encounter marker, which needs the
+// same camera the world is actually drawn with. `viewW`/`viewH` are the
+// visible area in world pixels — shrunk by cameraZoom, since zooming in means
+// fewer world pixels fit in the fixed 800x600 canvas.
 function getCamera() {
-  const camX = Math.round(
-    MAP_W * TILE <= VIEW_W
-      ? (MAP_W * TILE - VIEW_W) / 2
-      : Math.max(0, Math.min(MAP_W * TILE - VIEW_W, player.x - VIEW_W / 2))
-  );
-  const camY = Math.round(
-    MAP_H * TILE <= VIEW_H
-      ? (MAP_H * TILE - VIEW_H) / 2
-      : Math.max(0, Math.min(MAP_H * TILE - VIEW_H, player.y - VIEW_H / 2))
-  );
-  return { camX, camY };
+  const viewW = VIEW_W / cameraZoom;
+  const viewH = VIEW_H / cameraZoom;
+  let camX, camY;
+  if (revealed) {
+    // Fog-of-war maze interiors: the camera always tracks the player exactly,
+    // never clamped to the map's edge — the view scrolls continuously with
+    // you (showing a bit of void past a boundary is fine, and reads as "a
+    // bigger space to explore" rather than the map feeling boxed-in).
+    camX = Math.round(player.x - viewW / 2);
+    camY = Math.round(player.y - viewH / 2);
+  } else {
+    // Every other level: small interiors (house/village houses) are smaller
+    // than the view, so clamping alone would pin them to the top-left rather
+    // than centering — center directly whenever the map doesn't fill the
+    // view; otherwise clamp-scroll (e.g. the 100x100 overworld) so the true
+    // map edge is visible instead of scrolling past it into void.
+    camX = Math.round(
+      MAP_W * TILE <= viewW ? (MAP_W * TILE - viewW) / 2 : Math.max(0, Math.min(MAP_W * TILE - viewW, player.x - viewW / 2))
+    );
+    camY = Math.round(
+      MAP_H * TILE <= viewH ? (MAP_H * TILE - viewH) / 2 : Math.max(0, Math.min(MAP_H * TILE - viewH, player.y - viewH / 2))
+    );
+  }
+  return { camX, camY, viewW, viewH };
 }
 
 function render() {
-  const { camX, camY } = getCamera();
+  const { camX, camY, viewW, viewH } = getCamera();
+
+  // Scales everything drawn below (tiles, sprites, the player) uniformly —
+  // this is the "zoom" itself. Coordinates throughout this function stay in
+  // world-pixel space exactly as before; the transform does the rest.
+  ctx.save();
+  ctx.scale(cameraZoom, cameraZoom);
 
   ctx.fillStyle = "#111";
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, viewW, viewH);
 
   const startTx = Math.floor(camX / TILE);
-  const endTx = Math.ceil((camX + VIEW_W) / TILE);
+  const endTx = Math.ceil((camX + viewW) / TILE);
   const startTy = Math.floor(camY / TILE);
-  const endTy = Math.ceil((camY + VIEW_H) / TILE);
+  const endTy = Math.ceil((camY + viewH) / TILE);
 
   // base tiles
   for (let ty = startTy; ty < endTy; ty++) {
@@ -1274,6 +1340,7 @@ function render() {
   });
   drawables.sort((a, b) => a.y - b.y);
   drawables.forEach((d) => d.draw());
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------

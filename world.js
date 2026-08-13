@@ -31,8 +31,13 @@ function buildWorld(worldNumber) {
   registerBoss(finalBossId, FINAL_BOSS_TEMPLATE);
 
   const dungeonLevel = buildDungeonMaze({
-    width: 31,
-    height: 21,
+    // Sized well beyond the zoomed viewport (~16.7x12.5 tiles at 1.5x — see
+    // cameraZoom) so exploring genuinely scrolls, for a sense of a bigger
+    // space; the camera (see getCamera()'s fog-of-war branch) stays glued to
+    // the player throughout rather than clamping near the map's edges.
+    width: 40,
+    height: 28,
+    cameraZoom: 1.5,
     wallTile: T.DUNGEON_WALL,
     floorTile: T.DUNGEON_FLOOR,
     chests: [
@@ -48,8 +53,13 @@ function buildWorld(worldNumber) {
   });
 
   const castleLevel = buildDungeonMaze({
-    width: 31,
-    height: 21,
+    // Sized well beyond the zoomed viewport (~16.7x12.5 tiles at 1.5x — see
+    // cameraZoom) so exploring genuinely scrolls, for a sense of a bigger
+    // space; the camera (see getCamera()'s fog-of-war branch) stays glued to
+    // the player throughout rather than clamping near the map's edges.
+    width: 40,
+    height: 28,
+    cameraZoom: 1.5,
     wallTile: T.CASTLE_WALL,
     floorTile: T.CASTLE_FLOOR,
     chests: [
@@ -63,8 +73,13 @@ function buildWorld(worldNumber) {
   // linked to the overworld until the altar reveals it (see revealFinalBoss).
   const finalBossLevelId = levelId("final_dungeon");
   const finalBossLevel = buildDungeonMaze({
-    width: 31,
-    height: 21,
+    // Sized well beyond the zoomed viewport (~16.7x12.5 tiles at 1.5x — see
+    // cameraZoom) so exploring genuinely scrolls, for a sense of a bigger
+    // space; the camera (see getCamera()'s fog-of-war branch) stays glued to
+    // the player throughout rather than clamping near the map's edges.
+    width: 40,
+    height: 28,
+    cameraZoom: 1.5,
     wallTile: T.DUNGEON_WALL,
     floorTile: T.DUNGEON_FLOOR,
     chests: [],
