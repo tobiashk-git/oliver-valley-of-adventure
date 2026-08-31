@@ -7,6 +7,7 @@ const NPC_DEFS = {
     id: "village_elder",
     name: "Village Elder",
     icon: "🧑‍🌾",
+    spriteKind: "elder",
     intro: "Ah, a new face! I'm the Village Elder — I look after this little settlement. Good to meet you, traveler.",
     questIds: ["gather_wood"], // buildWorld() (world.js) appends the main quest here too
   },
@@ -14,6 +15,7 @@ const NPC_DEFS = {
     id: "village_trader",
     name: "Village Trader",
     icon: "🧑‍💼",
+    spriteKind: "trader",
     intro: "Welcome, welcome! I'm the Village Trader — come back anytime you want to buy or sell.",
     shop: true,
   },
@@ -28,7 +30,7 @@ let npcsMet = {};
 // quest list, starting empty. Mutates NPC_DEFS directly, same as
 // registerBoss() mutates BOSS_DEFS.
 function registerNPC(id, def) {
-  NPC_DEFS[id] = { id, questIds: [], ...def };
+  NPC_DEFS[id] = { id, questIds: [], spriteKind: "elder", ...def };
   return NPC_DEFS[id];
 }
 

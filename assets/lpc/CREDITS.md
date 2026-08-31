@@ -52,3 +52,21 @@ from the base pack (Manuel Riecke) + a "norman" helmet
 (`hat/helmet/norman/adult/walk.png` — ElizaWy, Sander Frenken/"castelonia")
 — earmarked for a possible future "found armor visually changes the
 player" mechanic.
+
+## NPC sprites — same base body/head/pants as the player, single static
+## down-facing frame each (NPCs never move, so no walk cycle is needed)
+
+**`elder.png`** (Village Elder) — body/head/pants as above + the player's
+existing longsleeve shirt layer, recolored **grey** hair (same manual
+palette-remap technique used for the player's blonde hair — no pre-made
+grey/white file exists in the repo either).
+- Hair (`hair/plain/adult/walk.png`) — JaidynReiman, Manuel Riecke
+  (MrBeast), Joe White — **recolored grey**
+
+**`trader.png`** (Village Trader) — body/head/pants + the player's shirt
+layer + a leather apron on top, plain (unrecolored) hair for contrast
+against the player's blonde and the elder's grey.
+- Apron (`torso/aprons/apron/male/walk/leather.png`) — Nila122
+
+Both licensed OGA-BY 3.0 (also dual/multi-licensed CC-BY-SA/GPL — using
+the most permissive applicable option), same as every other layer above.

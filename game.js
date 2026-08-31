@@ -47,6 +47,7 @@ const T = {
   FENCE: 29,
   GATE: 30,
   VILLAGE_PATH: 31,
+  UNKNOWN_EVENT: 32,
 };
 
 const SOLID_TILES = new Set([
@@ -70,6 +71,7 @@ const SOLID_TILES = new Set([
   T.LOCKED_DOOR,
   T.FENCE,
   T.GATE,
+  T.UNKNOWN_EVENT,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -238,17 +240,83 @@ function buildOverworld() {
   scatterResource(90, "flower", T.FLOWER, isZoneGround("forest", T.FOREST_GROUND));
   scatterResource(90, "jewel", T.JEWEL, isZoneGround("hills", T.HILLS_GROUND));
 
+  // Unknown events: fog-hidden landscape icons (monster/resource/treasure),
+  // discovered by proximity and resolved with E — see EVENT_REVEAL_RADIUS/
+  // resolveUnknownEvent(). Placed on any still-plain biome ground tile (any
+  // zone, unlike the zone-locked resources above), spaced apart so they don't
+  // cluster. `underGround` records what was there so baseTileFor() can
+  // restore the correct biome color once the event is resolved.
+  const worldEvents = new Map(); // key "x,y" -> {x, y, kind, discovered, underGround, ...reward}
+  const EVENT_COUNT = 25;
+  const EVENT_MIN_SPACING = 4; // tiles, between any two events
+  const isPlainGround = (x, y) =>
+    [T.GRASS, T.SNOW, T.SAND, T.FOREST_GROUND, T.HILLS_GROUND].includes(map[y][x]);
+  // Matches whichever material already scatters naturally in that ground's
+  // biome (see the scatterResource() calls above) — a resource event should
+  // never hand out ice in the desert. Valley grass picks between the two
+  // materials it already scatters.
+  const EVENT_MATERIAL_BY_GROUND = {
+    [T.GRASS]: () => (Math.random() < 0.5 ? "wood" : "stone"),
+    [T.SNOW]: () => "ice",
+    [T.SAND]: () => "cactus",
+    [T.FOREST_GROUND]: () => "flower",
+    [T.HILLS_GROUND]: () => "jewel",
+  };
+
+  function pickEventKind() {
+    const roll = Math.random();
+    return roll < 0.5 ? "monster" : roll < 0.8 ? "resource" : "treasure";
+  }
+
+  {
+    let placed = 0;
+    let attempts = 0;
+    const maxAttempts = EVENT_COUNT * 300;
+    while (placed < EVENT_COUNT && attempts < maxAttempts) {
+      attempts++;
+      const x = Math.floor(Math.random() * width);
+      const y = Math.floor(Math.random() * height);
+      if (!isPlainGround(x, y)) continue;
+      let tooClose = false;
+      for (const ev of worldEvents.values()) {
+        if (Math.hypot(ev.x - x, ev.y - y) < EVENT_MIN_SPACING) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+
+      const kind = pickEventKind();
+      const underGround = map[y][x];
+      const event = { x, y, kind, discovered: false, underGround };
+      if (kind === "resource") {
+        event.itemId = EVENT_MATERIAL_BY_GROUND[underGround]();
+        event.amount = 4 + Math.floor(Math.random() * 5); // 4-8
+      } else if (kind === "treasure") {
+        event.gold = 15 + Math.floor(Math.random() * 26); // 15-40
+      }
+      map[y][x] = T.UNKNOWN_EVENT;
+      worldEvents.set(key(x, y), event);
+      placed++;
+    }
+  }
+
   // points of interest
   resources.delete(key(DUNGEON_ENTRANCE.x, DUNGEON_ENTRANCE.y));
   resources.delete(key(CASTLE_ENTRANCE.x, CASTLE_ENTRANCE.y));
   resources.delete(key(HOUSE_ENTRANCE.x, HOUSE_ENTRANCE.y));
+  worldEvents.delete(key(DUNGEON_ENTRANCE.x, DUNGEON_ENTRANCE.y));
+  worldEvents.delete(key(CASTLE_ENTRANCE.x, CASTLE_ENTRANCE.y));
+  worldEvents.delete(key(HOUSE_ENTRANCE.x, HOUSE_ENTRANCE.y));
   map[DUNGEON_ENTRANCE.y][DUNGEON_ENTRANCE.x] = T.DUNGEON_ENTRANCE;
   map[CASTLE_ENTRANCE.y][CASTLE_ENTRANCE.x] = T.CASTLE_ENTRANCE;
   map[HOUSE_ENTRANCE.y][HOUSE_ENTRANCE.x] = T.HOUSE_ENTRANCE;
   for (const house of VILLAGE_HOUSE_POSITIONS) {
     map[house.y][house.x] = T.HOUSE_ENTRANCE;
+    worldEvents.delete(key(house.x, house.y));
   }
   resources.delete(key(ALTAR_POS.x, ALTAR_POS.y));
+  worldEvents.delete(key(ALTAR_POS.x, ALTAR_POS.y));
   map[ALTAR_POS.y][ALTAR_POS.x] = T.ALTAR;
 
   return {
@@ -256,6 +324,7 @@ function buildOverworld() {
     width,
     height,
     resources,
+    worldEvents,
     chestTiles: [],
     portals: [], // linked to dungeon/castle/house interiors after they're built
   };
@@ -566,7 +635,7 @@ const houseLevel = levels.house;
 
 let currentLevelId = null;
 let currentWorld = 1;
-let map, MAP_W, MAP_H, resources, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX, cameraZoom;
+let map, MAP_W, MAP_H, resources, worldEvents, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX, cameraZoom;
 let lastPlayerTileX = null;
 let lastPlayerTileY = null;
 
@@ -577,6 +646,7 @@ function activateLevel(levelId, spawnX, spawnY) {
   MAP_W = lvl.width;
   MAP_H = lvl.height;
   resources = lvl.resources;
+  worldEvents = lvl.worldEvents; // undefined on interior levels — nearestUnknownEvent()/etc. no-op then
   chestTiles = lvl.chestTiles;
   portals = lvl.portals;
   bossTile = lvl.bossTile;
@@ -722,6 +792,23 @@ let spritePathReady = false;
 spritePath.onload = () => (spritePathReady = true);
 spritePath.src = "assets/lpc/path.png";
 
+// NPC sprites — one static (down-facing, non-animated) frame per kind, since
+// NPCs never move. Looked up by NPC_DEFS[...].spriteKind in drawNpc() below.
+const spriteElder = new Image();
+let spriteElderReady = false;
+spriteElder.onload = () => (spriteElderReady = true);
+spriteElder.src = "assets/lpc/elder.png";
+
+const spriteTrader = new Image();
+let spriteTraderReady = false;
+spriteTrader.onload = () => (spriteTraderReady = true);
+spriteTrader.src = "assets/lpc/trader.png";
+
+const NPC_SPRITES = {
+  elder: () => (spriteElderReady ? spriteElder : null),
+  trader: () => (spriteTraderReady ? spriteTrader : null),
+};
+
 activateLevel("house", houseLevel.spawnX, houseLevel.spawnY);
 
 const keys = new Set();
@@ -749,33 +836,38 @@ window.addEventListener("keydown", (e) => {
           openStorage(chest.storageId);
         }
       } else {
-        const npc = nearestNPC();
-        if (npc) {
-          interactWithNPC(npc.npcId);
+        const event = nearestUnknownEvent();
+        if (event) {
+          resolveUnknownEvent(event);
         } else {
-          const altar = nearestAltar();
-          if (altar) {
-            if (isDialogueOpen()) {
-              closeDialogue();
-            } else {
-              interactWithAltar(altar);
-            }
+          const npc = nearestNPC();
+          if (npc) {
+            interactWithNPC(npc.npcId);
           } else {
-            const lockedDoorNearby = nearestLockedDoor();
-            if (lockedDoorNearby) {
+            const altar = nearestAltar();
+            if (altar) {
               if (isDialogueOpen()) {
                 closeDialogue();
               } else {
-                interactWithLockedDoor(lockedDoorNearby);
+                interactWithAltar(altar);
               }
             } else {
-              const boss = nearestBoss();
-              if (boss) {
-                startBossFight(boss.bossId);
+              const lockedDoorNearby = nearestLockedDoor();
+              if (lockedDoorNearby) {
+                if (isDialogueOpen()) {
+                  closeDialogue();
+                } else {
+                  interactWithLockedDoor(lockedDoorNearby);
+                }
               } else {
-                const portal = nearestPortal();
-                if (portal) {
-                  activateLevel(portal.toLevelId, portal.toX, portal.toY);
+                const boss = nearestBoss();
+                if (boss) {
+                  startBossFight(boss.bossId);
+                } else {
+                  const portal = nearestPortal();
+                  if (portal) {
+                    activateLevel(portal.toLevelId, portal.toX, portal.toY);
+                  }
                 }
               }
             }
@@ -855,6 +947,25 @@ function revealTilesAround(centerX, centerY) {
 
 function isRevealed(tx, ty) {
   return !revealed || revealed.has(key(tx, ty));
+}
+
+// Separate from the dungeon fog-of-war above (which gates whole tiles,
+// ground included, and only exists on maze-type interiors) — this only ever
+// flips a per-event `discovered` flag, leaving the overworld's terrain
+// fully visible as always. Once true it stays true (matches how dungeon fog
+// reveal is permanent-once-seen too).
+const EVENT_REVEAL_RADIUS = 3;
+
+function revealNearbyEvents(centerX, centerY) {
+  if (!worldEvents) return;
+  for (const ev of worldEvents.values()) {
+    if (ev.discovered) continue;
+    const dx = ev.x - centerX;
+    const dy = ev.y - centerY;
+    if (dx * dx + dy * dy <= EVENT_REVEAL_RADIUS * EVENT_REVEAL_RADIUS) {
+      ev.discovered = true;
+    }
+  }
 }
 
 const ROOM_REVEAL_STEP_DELAY = 90; // ms between each column of the dramatic boss-room sweep
@@ -951,7 +1062,7 @@ function tryGather() {
 
   if (res.amount <= 0) {
     resources.delete(key(tx, ty));
-    map[ty][tx] = baseTileFor(map[ty][tx]);
+    map[ty][tx] = baseTileFor(map[ty][tx], tx, ty);
   }
   return true;
 }
@@ -974,6 +1085,47 @@ function nearestChest() {
     if (dist <= TILE * 1.3) return chest;
   }
   return null;
+}
+
+// Only matches a *discovered* event — an undiscovered one is invisible and
+// shouldn't be interactable even if the player happens to be standing next
+// to it (see EVENT_REVEAL_RADIUS/revealNearbyEvents(), which guarantees
+// discovery well before the player could physically reach it anyway).
+function nearestUnknownEvent() {
+  if (!worldEvents) return null;
+  for (const ev of worldEvents.values()) {
+    if (!ev.discovered) continue;
+    const cx = ev.x * TILE + TILE / 2;
+    const cy = ev.y * TILE + TILE / 2;
+    const dist = Math.hypot(cx - player.x, cy - player.y);
+    if (dist <= TILE * 1.3) return ev;
+  }
+  return null;
+}
+
+// One-shot: always removes the event and restores the tile's original biome
+// ground (same revert-on-resolve idea as tryGather()'s depletion branch),
+// then resolves by kind. Monster events skip the ambient system's flash/
+// marker suspense — the player already deliberately walked up and pressed
+// E, same reasoning startBossFight() already uses.
+function resolveUnknownEvent(ev) {
+  // Read ev.underGround directly rather than going through baseTileFor()'s
+  // worldEvents lookup — that lookup only works before the entry below is
+  // deleted, and ev already carries the same value.
+  map[ev.y][ev.x] = ev.underGround;
+  worldEvents.delete(key(ev.x, ev.y));
+
+  if (ev.kind === "monster") {
+    startCombat(pickEncounterGroup());
+  } else if (ev.kind === "resource") {
+    addItem(ev.itemId, ev.amount);
+    refreshHud();
+    showMessage("You found something!", `You found ${ev.amount} ${getItemDef(ev.itemId).name}.`);
+  } else if (ev.kind === "treasure") {
+    addItem("gold", ev.gold);
+    refreshHud();
+    showMessage("Treasure!", `You found ${ev.gold} gold.`);
+  }
 }
 
 function nearestBoss() {
@@ -1080,6 +1232,7 @@ function update(dt) {
     lastPlayerTileX = tileX;
     lastPlayerTileY = tileY;
     if (revealed) revealTilesAround(tileX, tileY);
+    revealNearbyEvents(tileX, tileY);
     if (
       bossRoom &&
       levels[currentLevelId].bossRoomRevealPending &&
@@ -1099,17 +1252,22 @@ function update(dt) {
 
   const near = nearestResourceTile();
   const nearChest = near ? null : nearestChest();
-  const nearNPC = near || nearChest ? null : nearestNPC();
-  const nearAltar = near || nearChest || nearNPC ? null : nearestAltar();
-  const nearLockedDoor = near || nearChest || nearNPC || nearAltar ? null : nearestLockedDoor();
-  const nearBoss = near || nearChest || nearNPC || nearAltar || nearLockedDoor ? null : nearestBoss();
-  const nearPortal = near || nearChest || nearNPC || nearAltar || nearLockedDoor || nearBoss ? null : nearestPortal();
+  const nearEvent = near || nearChest ? null : nearestUnknownEvent();
+  const nearNPC = near || nearChest || nearEvent ? null : nearestNPC();
+  const nearAltar = near || nearChest || nearEvent || nearNPC ? null : nearestAltar();
+  const nearLockedDoor = near || nearChest || nearEvent || nearNPC || nearAltar ? null : nearestLockedDoor();
+  const nearBoss = near || nearChest || nearEvent || nearNPC || nearAltar || nearLockedDoor ? null : nearestBoss();
+  const nearPortal =
+    near || nearChest || nearEvent || nearNPC || nearAltar || nearLockedDoor || nearBoss ? null : nearestPortal();
   if (near) {
     const itemDef = getItemDef(near.res.itemId);
     promptEl.textContent = `Press E to gather ${itemDef.name}`;
     promptEl.style.display = "block";
   } else if (nearChest) {
     promptEl.textContent = isStorageOpen() ? "Press E to close" : "Press E to open Chest";
+    promptEl.style.display = "block";
+  } else if (nearEvent) {
+    promptEl.textContent = "Press E to investigate";
     promptEl.style.display = "block";
   } else if (nearNPC) {
     const npcDef = NPC_DEFS[nearNPC.npcId];
@@ -1136,8 +1294,12 @@ function update(dt) {
 // Render
 // ---------------------------------------------------------------------------
 
-function baseTileFor(t) {
+function baseTileFor(t, tx, ty) {
   if (t === T.TREE || t === T.ROCK) return T.GRASS;
+  // Unlike every other tile type here (each fixed to one biome by
+  // construction), events scatter across every biome, so the ground under
+  // one has to be looked up per-instance rather than hardcoded.
+  if (t === T.UNKNOWN_EVENT) return worldEvents?.get(key(tx, ty))?.underGround ?? T.GRASS;
   if (t === T.CHEST || t === T.BOSS) {
     // Suffix checks, not exact match: later worlds' dungeon/castle/final-boss
     // dungeon use prefixed ids ("world2_dungeon", "world1_final_dungeon", ...)
@@ -1469,10 +1631,32 @@ function drawHouseEntrance(px, py) {
 function drawNpc(px, py) {
   if (!npcTile) return;
   const def = NPC_DEFS[npcTile.npcId];
+  const spriteGetter = def && NPC_SPRITES[def.spriteKind];
+  const sprite = spriteGetter && spriteGetter();
+  if (sprite) {
+    // Anchored at the tile's bottom-center (ground contact), same convention
+    // as the player sprite — a single static 64x64 down-facing frame.
+    ctx.drawImage(sprite, 0, 0, 64, 64, px + TILE / 2 - 32, py + TILE - 64, 64, 64);
+    return;
+  }
   ctx.font = "28px serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(def ? def.icon : "🧑", px + TILE / 2, py + TILE / 2 + 1);
+}
+
+// Undiscovered events draw nothing at all — the ground layer underneath
+// (baseTileFor()'s per-instance lookup above) already paints the correct
+// plain biome color/sprite, so an unrevealed event is indistinguishable
+// from ordinary terrain. Once discovered, a simple emoji marker is enough;
+// no dedicated sprite has been sourced for this yet.
+function drawUnknownEvent(px, py, tx, ty) {
+  const ev = worldEvents && worldEvents.get(key(tx, ty));
+  if (!ev || !ev.discovered) return;
+  ctx.font = "24px serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("❓", px + TILE / 2, py + TILE / 2 + 1);
 }
 
 function drawAltar(px, py) {
@@ -1530,6 +1714,7 @@ const TILE_SPRITES = {
   [T.HIDDEN_DUNGEON_ENTRANCE]: drawHiddenDungeonEntrance,
   [T.LOCKED_DOOR]: drawLockedDoor,
   [T.GATE]: drawGate,
+  [T.UNKNOWN_EVENT]: drawUnknownEvent,
 };
 
 function drawPlayer(px, py) {
@@ -1648,7 +1833,7 @@ function render() {
         continue;
       }
       const t = map[ty][tx];
-      const baseT = baseTileFor(t);
+      const baseT = baseTileFor(t, tx, ty);
       const groundSprite = groundSpriteFor(baseT, tx, ty);
       if (groundSprite) {
         ctx.drawImage(groundSprite.img, groundSprite.sx, groundSprite.sy, TILE, TILE, px, py, TILE, TILE);
@@ -1670,7 +1855,7 @@ function render() {
       if (spriteFn) {
         drawables.push({
           y: ty * TILE + TILE,
-          draw: () => spriteFn(tx * TILE - camX, ty * TILE - camY),
+          draw: () => spriteFn(tx * TILE - camX, ty * TILE - camY, tx, ty),
         });
       }
     }
