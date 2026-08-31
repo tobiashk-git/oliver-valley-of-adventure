@@ -19,6 +19,8 @@ Assets from the Liberated Pixel Cup (LPC) base asset pack (opengameart.org).
 - `furniture/bed.png`, `furniture/chair.png` (cropped from `country.png`) — Lanea Zimmerman ("Sharm")
 - `furniture/table.png` (cropped from `cabinets.png`) — Lanea Zimmerman ("Sharm")
 - `furniture/stove.png` (cropped from `kitchen.png`) — Lanea Zimmerman ("Sharm")
+- `furniture/bookshelf.png`, `furniture/cabinet.png` (cropped from `cabinets.png`) — Lanea Zimmerman ("Sharm")
+- `furniture/barrel.png` (cropped from `barrel.png`) — Lanea Zimmerman ("Sharm")
 
 ## CC-BY-SA 3.0 / GPL 3.0 (attribution required, share-alike for derivatives)
 

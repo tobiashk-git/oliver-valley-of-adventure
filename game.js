@@ -817,7 +817,7 @@ spriteHouseFloor.src = "assets/lpc/house_floor.png";
 const spriteWindow = new Image();
 let spriteWindowReady = false;
 spriteWindow.onload = () => (spriteWindowReady = true);
-spriteWindow.src = "assets/lpc/window.png";
+spriteWindow.src = "assets/lpc/window.png?v=2"; // cache-bust: swapped for a richer cornice/mullion design
 
 // Not a tile at all — a single rug image stretched across a rectangular
 // area (`rugRect`, in tile units, set per-level like bossRoom) so it reads
@@ -846,8 +846,11 @@ function loadFurnitureSprite(src) {
 const FURNITURE_SPRITES = {
   bed: { ...loadFurnitureSprite("assets/lpc/furniture/bed.png"), w: 64, h: 128 },
   chair: { ...loadFurnitureSprite("assets/lpc/furniture/chair.png"), w: 32, h: 32 },
-  table: { ...loadFurnitureSprite("assets/lpc/furniture/table.png"), w: 72, h: 45 },
+  table: { ...loadFurnitureSprite("assets/lpc/furniture/table.png?v=2"), w: 66, h: 45 }, // cache-bust: crop redone to remove a neighboring-sprite sliver on the right edge
   stove: { ...loadFurnitureSprite("assets/lpc/furniture/stove.png"), w: 32, h: 36 },
+  bookshelf: { ...loadFurnitureSprite("assets/lpc/furniture/bookshelf.png"), w: 32, h: 64 },
+  barrel: { ...loadFurnitureSprite("assets/lpc/furniture/barrel.png"), w: 32, h: 64 },
+  cabinet: { ...loadFurnitureSprite("assets/lpc/furniture/cabinet.png"), w: 32, h: 42 },
 };
 
 // NPC sprites — one static (down-facing, non-animated) frame per kind, since
@@ -1749,8 +1752,11 @@ function drawFurniture(px, py, tx, ty) {
   if (!spec || !spec.isReady()) return;
   // Oversized and bottom-anchored, same convention as drawTree()/
   // drawHouseEntrance() — furniture reads as taller/bigger than the single
-  // tile it blocks for collision purposes.
-  ctx.drawImage(spec.img, 0, 0, spec.w, spec.h, px + TILE / 2 - spec.w / 2, py + TILE - spec.h, spec.w, spec.h);
+  // tile it blocks for collision purposes. `yOffset` (optional, pixels) nudges
+  // it down from that bottom-anchor point — e.g. the stove against the north
+  // wall wants a visible gap of floor showing above it, not flush contact.
+  const y = py + TILE - spec.h + (piece.yOffset || 0);
+  ctx.drawImage(spec.img, 0, 0, spec.w, spec.h, px + TILE / 2 - spec.w / 2, y, spec.w, spec.h);
 }
 
 // Undiscovered events draw nothing at all — the ground layer underneath

@@ -175,17 +175,21 @@ function buildWorld(worldNumber) {
     // Layout: bed top-left, chest bottom-left, stove top-right, table +
     // chairs bottom-right, a big rug across the middle of the room.
     houseLevel.furniture = new Map();
-    function placeFurniture(x, y, kind) {
+    function placeFurniture(x, y, kind, yOffset) {
       houseLevel.map[y][x] = T.FURNITURE;
-      houseLevel.furniture.set(key(x, y), { kind });
+      houseLevel.furniture.set(key(x, y), { kind, yOffset });
     }
     placeFurniture(2, 4, "bed"); // top-left, head against the north wall
-    placeFurniture(8, 1, "stove"); // top-right, against the north wall
-    placeFurniture(7, 5, "table"); // bottom-right
-    placeFurniture(7, 4, "chair"); // north of the table
-    placeFurniture(7, 6, "chair"); // south of the table
+    placeFurniture(8, 1, "stove", 8); // top-right; yOffset leaves a small gap to the north wall
+    placeFurniture(8, 5, "table"); // bottom-right, against the east wall
+    placeFurniture(8, 4, "chair"); // north of the table
+    placeFurniture(8, 6, "chair"); // south of the table
+    // Windows — two adjacent wall tiles each (twice the single-tile width),
+    // running along each wall's own length since it's only 1 tile thick.
     houseLevel.map[6][0] = T.WINDOW_WALL; // west wall, clear of the bed above it
+    houseLevel.map[7][0] = T.WINDOW_WALL;
     houseLevel.map[3][10] = T.WINDOW_WALL; // east wall
+    houseLevel.map[4][10] = T.WINDOW_WALL;
     houseLevel.rugRect = { x: 4, y: 3, w: 3, h: 3 }; // tile units — one big rug, not a single small tile
 
     overworldLevel.portals.push({
@@ -261,6 +265,33 @@ function buildWorld(worldNumber) {
       level.map[2][4] = T.NPC;
       level.npcTile = { x: 4, y: 2, npcId: house.npc };
     }
+
+    // Decorative dressing, matching each house's role — applies to every
+    // world (this loop already runs per-world), same as the NPC placement
+    // above. Interior floor spans x:1-7, y:1-5 (9x7 room); NPC stands at
+    // (4,2), door is at (4,6). House 4 (i === 2) has no NPC yet and stays
+    // genuinely bare, reserved for future content.
+    level.furniture = new Map();
+    function placeFurniture(x, y, kind) {
+      level.map[y][x] = T.FURNITURE;
+      level.furniture.set(key(x, y), { kind });
+    }
+    if (i === 0) {
+      // Elder: a humble bed, a bookshelf, a small rug.
+      placeFurniture(2, 4, "bed"); // top-left, head against the north wall
+      placeFurniture(6, 2, "bookshelf"); // top-right
+      level.map[3][0] = T.WINDOW_WALL; // west wall (two tiles, twice the single-tile width)
+      level.map[4][0] = T.WINDOW_WALL;
+      level.rugRect = { x: 4, y: 3, w: 2, h: 2 };
+    } else if (i === 1) {
+      // Trader: a counter beside them, stock in a barrel and a cabinet.
+      placeFurniture(2, 2, "table"); // counter, level with the trader
+      placeFurniture(2, 4, "barrel");
+      placeFurniture(6, 4, "cabinet");
+      level.map[1][8] = T.WINDOW_WALL; // east wall (two tiles, twice the single-tile width)
+      level.map[2][8] = T.WINDOW_WALL;
+    }
+
     levels[levelId(house.id)] = level;
     LEVEL_TO_WORLD[levelId(house.id)] = worldNumber;
   });
