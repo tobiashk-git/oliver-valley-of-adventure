@@ -31,6 +31,19 @@ function buildWorld(worldNumber) {
     Object.values(VILLAGE_GATES).forEach((gate) => {
       overworldLevel.map[gate.y][gate.x] = T.GATE;
     });
+    // A cross of paths from the altar (dead center) out to each gate. Stops
+    // one tile short of the border (where the gates already sit) and skips
+    // the exact center tile, which buildOverworld() already stamped T.ALTAR
+    // onto — a distinct tile id (not T.PATH, which is encounter-eligible)
+    // so the village stays a safe zone; see groundSpriteFor() for the sprite.
+    for (let y = VILLAGE_BOUNDS.y0 + 1; y <= VILLAGE_BOUNDS.y1 - 1; y++) {
+      if (y === WORLD_CENTER_Y) continue;
+      overworldLevel.map[y][WORLD_CENTER_X] = T.VILLAGE_PATH;
+    }
+    for (let x = VILLAGE_BOUNDS.x0 + 1; x <= VILLAGE_BOUNDS.x1 - 1; x++) {
+      if (x === WORLD_CENTER_X) continue;
+      overworldLevel.map[WORLD_CENTER_Y][x] = T.VILLAGE_PATH;
+    }
   }
 
   // World 1 keeps its original fixed boss ids (already tested, already has

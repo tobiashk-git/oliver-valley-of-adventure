@@ -46,6 +46,7 @@ const T = {
   LOCKED_DOOR: 28,
   FENCE: 29,
   GATE: 30,
+  VILLAGE_PATH: 31,
 };
 
 const SOLID_TILES = new Set([
@@ -86,7 +87,9 @@ const ENCOUNTER_ELIGIBLE_TILES = new Set([
 // Fixed points of interest on the overworld map.
 const DUNGEON_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y - 30 };
 const CASTLE_ENTRANCE = { x: WORLD_CENTER_X + 35, y: WORLD_CENTER_Y };
-const HOUSE_ENTRANCE = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y };
+// NW corner of the village square (see VILLAGE_BOUNDS below) — one of 4
+// symmetric corner house plots, the altar takes the center instead.
+const HOUSE_ENTRANCE = { x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 3 };
 
 // A small safe, resource-free village square around the house. Bounds stamped
 // as T.VILLAGE_GROUND before resources scatter (so nothing can spawn inside),
@@ -102,14 +105,18 @@ const VILLAGE_BOUNDS = {
 // Village house positions are reused identically by every world (each world's
 // map is its own independent grid, so there's no collision risk) — only which
 // NPC (if any) lives in each is world.js's decision, since World 1's elder
-// keeps its fixed id while later worlds' elders get their own.
+// keeps its fixed id while later worlds' elders get their own. The 3 other
+// corners of the village square — NW is HOUSE_ENTRANCE above. y is ∓3 (not a
+// symmetric ∓4) so a house sprite's height never pokes above the north fence.
 const VILLAGE_HOUSE_POSITIONS = [
-  { id: "village_house_1", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y - 2 },
-  { id: "village_house_2", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 2 },
-  { id: "village_house_3", x: WORLD_CENTER_X, y: WORLD_CENTER_Y + 4 },
+  { id: "village_house_1", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y - 3 }, // NE
+  { id: "village_house_2", x: WORLD_CENTER_X - 5, y: WORLD_CENTER_Y + 3 }, // SW
+  { id: "village_house_3", x: WORLD_CENTER_X + 5, y: WORLD_CENTER_Y + 3 }, // SE
 ];
-// Where the altar sits in every world's village square.
-const ALTAR_POS = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y - 2 };
+// Dead center of every world's village square — the 4 houses take the corners
+// (HOUSE_ENTRANCE/VILLAGE_HOUSE_POSITIONS above), paths cross here from each
+// gate (see buildWorld() in world.js).
+const ALTAR_POS = { x: WORLD_CENTER_X, y: WORLD_CENTER_Y };
 // World 1 only (see buildWorld() in world.js): the 4 gates set into the
 // village's perimeter fence, centered on each edge of VILLAGE_BOUNDS.
 const VILLAGE_GATES = {
@@ -613,7 +620,107 @@ const player = {
   h: 20,
   speed: 160, // px/sec
   dir: "down", // facing direction, for rendering
+  moving: false, // set each frame in update() — drives the walk-cycle animation
 };
+
+// ---------------------------------------------------------------------------
+// Proof-of-concept sprite rendering (graphics-revamp trial run) — Liberated
+// Pixel Cup assets (see assets/lpc/CREDITS.md). Loaded async; every draw call
+// below checks its "ready" flag and falls back to the original hand-drawn
+// shape/flat color if the image hasn't finished loading (or failed to), so
+// nothing ever breaks. Scoped to just grass + the player for this trial.
+// ---------------------------------------------------------------------------
+
+const spriteGrass = new Image();
+let spriteGrassReady = false;
+spriteGrass.onload = () => (spriteGrassReady = true);
+spriteGrass.src = "assets/lpc/grass.png";
+
+const spritePlayer = new Image();
+let spritePlayerReady = false;
+spritePlayer.onload = () => (spritePlayerReady = true);
+// Humble starting look (base body + simple shirt/pants + hair) rather than
+// pre-armored — assets/lpc/soldier_helmet.png is kept around unused for a
+// future "found armor visually changes the player" mechanic.
+spritePlayer.src = "assets/lpc/player_base.png?v=2"; // cache-bust: content replaced after the first version was missing its head layer
+
+const PLAYER_SPRITE_ROWS = { up: 0, left: 1, down: 2, right: 3 };
+const PLAYER_SPRITE_FRAME_SIZE = 64;
+const PLAYER_WALK_FRAME_DURATION = 110; // ms per frame while moving
+
+const spriteTree = new Image();
+let spriteTreeReady = false;
+spriteTree.onload = () => (spriteTreeReady = true);
+spriteTree.src = "assets/lpc/tree.png";
+const TREE_SPRITE_W = 94;
+const TREE_SPRITE_H = 80;
+const TREE_DRAW_SCALE = 0.6; // full sheet size reads oversized against a single 32px tile
+
+const spriteRock = new Image();
+let spriteRockReady = false;
+spriteRock.onload = () => (spriteRockReady = true);
+spriteRock.src = "assets/lpc/rock.png";
+
+// Base-tile ground textures (grass + these 4) are all plain 32x32 tileable
+// crops, drawn 1:1 with no scaling/anchoring — see the render() base-tile loop.
+const spriteDungeonWall = new Image();
+let spriteDungeonWallReady = false;
+spriteDungeonWall.onload = () => (spriteDungeonWallReady = true);
+spriteDungeonWall.src = "assets/lpc/dungeon_wall.png";
+
+const spriteDungeonFloor = new Image();
+let spriteDungeonFloorReady = false;
+spriteDungeonFloor.onload = () => (spriteDungeonFloorReady = true);
+spriteDungeonFloor.src = "assets/lpc/dungeon_floor.png";
+
+const spriteCastleWall = new Image();
+let spriteCastleWallReady = false;
+spriteCastleWall.onload = () => (spriteCastleWallReady = true);
+spriteCastleWall.src = "assets/lpc/castle_wall.png";
+
+const spriteCastleFloor = new Image();
+let spriteCastleFloorReady = false;
+spriteCastleFloor.onload = () => (spriteCastleFloorReady = true);
+spriteCastleFloor.src = "assets/lpc/castle_floor.png";
+
+const spriteChest = new Image();
+let spriteChestReady = false;
+spriteChest.onload = () => (spriteChestReady = true);
+spriteChest.src = "assets/lpc/chest.png";
+
+// A door alone (or a composited wall-plus-door fragment) never quite read as
+// a real building, so house entrances use a genuine standalone house sprite
+// instead — from a different source than the rest of assets/lpc/, see
+// assets/oga/CREDITS.md.
+const spriteHouse = new Image();
+let spriteHouseReady = false;
+spriteHouse.onload = () => (spriteHouseReady = true);
+spriteHouse.src = "assets/oga/house.png";
+const HOUSE_SPRITE_W = 69;
+const HOUSE_SPRITE_H = 123;
+const HOUSE_DRAW_SCALE = 0.75; // full size left too little clearance for the north corner houses' fence gap
+
+const spriteFence = new Image();
+let spriteFenceReady = false;
+spriteFence.onload = () => (spriteFenceReady = true);
+spriteFence.src = "assets/lpc/fence.png";
+
+const spriteGate = new Image();
+let spriteGateReady = false;
+spriteGate.onload = () => (spriteGateReady = true);
+spriteGate.src = "assets/lpc/gate.png";
+
+const spriteAltar = new Image();
+let spriteAltarReady = false;
+spriteAltar.onload = () => (spriteAltarReady = true);
+spriteAltar.src = "assets/lpc/altar.png";
+const ALTAR_SPRITE_W = 32;
+const ALTAR_SPRITE_H = 64;
+
+const spritePath = new Image();
+let spritePathReady = false;
+spritePath.onload = () => (spritePathReady = true);
+spritePath.src = "assets/lpc/path.png";
 
 activateLevel("house", houseLevel.spawnX, houseLevel.spawnY);
 
@@ -945,7 +1052,8 @@ function update(dt) {
   if (keys.has("a")) dx -= 1;
   if (keys.has("d")) dx += 1;
 
-  if (dx !== 0 || dy !== 0) {
+  player.moving = dx !== 0 || dy !== 0;
+  if (player.moving) {
     const len = Math.hypot(dx, dy);
     dx /= len;
     dy /= len;
@@ -1052,6 +1160,52 @@ function baseTileFor(t) {
   return t;
 }
 
+// Returns { img, sx, sy } for a base ground tile with a loaded sprite
+// replacement, or null to fall back to tileColor()'s flat fill — checked
+// fresh each call since the *Ready flags flip asynchronously as images load.
+// Tiles a wall tile counts as "bordering" for isAdjacentToFloor() below —
+// anything a room/corridor actually carves onto, so the brick-wall texture
+// only wraps the visible boundary rather than the whole solid-rock fill.
+const FLOOR_LIKE_TILES = new Set([T.DUNGEON_FLOOR, T.CASTLE_FLOOR, T.FLOOR, T.CHEST, T.BOSS, T.DOOR, T.LOCKED_DOOR]);
+
+function isAdjacentToFloor(tx, ty) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = tx + dx;
+      const ny = ty + dy;
+      if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) continue;
+      if (FLOOR_LIKE_TILES.has(map[ny][nx])) return true;
+    }
+  }
+  return false;
+}
+
+function groundSpriteFor(baseT, tx, ty) {
+  if (baseT === T.GRASS && spriteGrassReady) return { img: spriteGrass, sx: 0, sy: 160 };
+  if (baseT === T.DUNGEON_FLOOR && spriteDungeonFloorReady) return { img: spriteDungeonFloor, sx: 0, sy: 0 };
+  // Only the one layer of wall actually bordering a room/corridor reads as
+  // built brick — everything beyond that falls through to tileColor()'s
+  // existing flat dark grey (#39393f), reading as plain unexcavated rock.
+  if (baseT === T.DUNGEON_WALL && spriteDungeonWallReady && isAdjacentToFloor(tx, ty)) {
+    return { img: spriteDungeonWall, sx: 0, sy: 0 };
+  }
+  if (baseT === T.CASTLE_FLOOR && spriteCastleFloorReady) return { img: spriteCastleFloor, sx: 0, sy: 0 };
+  // Same "one layer of built wall, solid rock beyond" reasoning as the
+  // dungeon wall above — falls through to tileColor()'s flat grey.
+  if (baseT === T.CASTLE_WALL && spriteCastleWallReady && isAdjacentToFloor(tx, ty)) {
+    return { img: spriteCastleWall, sx: 0, sy: 0 };
+  }
+  if (baseT === T.FENCE && spriteFenceReady) return { img: spriteFence, sx: 0, sy: 0 };
+  // Village ground reads as ordinary grass (it's only a distinct tile id so
+  // scatterResource() naturally skips it — see buildOverworld()) — houses
+  // sit on grass, with the cross-shaped T.VILLAGE_PATH tiles (world.js)
+  // standing out as the only paved ground.
+  if (baseT === T.VILLAGE_GROUND && spriteGrassReady) return { img: spriteGrass, sx: 0, sy: 160 };
+  if (baseT === T.VILLAGE_PATH && spritePathReady) return { img: spritePath, sx: 0, sy: 0 };
+  return null;
+}
+
 function tileColor(t) {
   switch (t) {
     case T.WALL:
@@ -1075,11 +1229,13 @@ function tileColor(t) {
     case T.DUNGEON_FLOOR:
       return "#5c5c66";
     case T.CASTLE_WALL:
-      return "#8a7a5a";
+      return "#39393f"; // deep rock beyond the built wall — same tone as the dungeon's
     case T.CASTLE_FLOOR:
       return "#d9c9a0";
     case T.VILLAGE_GROUND:
       return "#cbb27e";
+    case T.VILLAGE_PATH:
+      return "#a9895f";
     case T.FENCE:
       return "#6b4a2e";
     default:
@@ -1088,6 +1244,15 @@ function tileColor(t) {
 }
 
 function drawTree(px, py) {
+  if (spriteTreeReady) {
+    const w = TREE_SPRITE_W * TREE_DRAW_SCALE;
+    const h = TREE_SPRITE_H * TREE_DRAW_SCALE;
+    // Anchored at the tile's bottom-center (ground contact), overflowing
+    // upward past the tile's top edge — same "sprite bigger than its logical
+    // footprint" idea already used for the player.
+    ctx.drawImage(spriteTree, 0, 0, TREE_SPRITE_W, TREE_SPRITE_H, px + TILE / 2 - w / 2, py + TILE - h, w, h);
+    return;
+  }
   ctx.fillStyle = "#6b4423";
   ctx.fillRect(px + TILE / 2 - 3, py + TILE / 2, 6, TILE / 2 - 4);
   ctx.fillStyle = "#2f6b2f";
@@ -1101,6 +1266,10 @@ function drawTree(px, py) {
 }
 
 function drawRock(px, py) {
+  if (spriteRockReady) {
+    ctx.drawImage(spriteRock, 0, 0, TILE, TILE, px, py, TILE, TILE);
+    return;
+  }
   ctx.fillStyle = "#8a8a8a";
   ctx.beginPath();
   ctx.moveTo(px + 6, py + TILE - 6);
@@ -1120,6 +1289,10 @@ function drawRock(px, py) {
 }
 
 function drawChest(px, py) {
+  if (spriteChestReady) {
+    ctx.drawImage(spriteChest, 0, 0, TILE, TILE, px, py, TILE, TILE);
+    return;
+  }
   const w = TILE - 8;
   const h = TILE - 10;
   const x = px + 4;
@@ -1277,6 +1450,16 @@ function drawBoss(px, py) {
 }
 
 function drawHouseEntrance(px, py) {
+  if (spriteHouseReady) {
+    // Centered horizontally and anchored at the tile's bottom edge (ground
+    // contact) — same overflow idea as the tree, just for a whole building:
+    // the player interacts with the single entrance tile underneath, but
+    // visually it reads as walking up to a real house, not a doorway.
+    const w = HOUSE_SPRITE_W * HOUSE_DRAW_SCALE;
+    const h = HOUSE_SPRITE_H * HOUSE_DRAW_SCALE;
+    ctx.drawImage(spriteHouse, 0, 0, HOUSE_SPRITE_W, HOUSE_SPRITE_H, px + TILE / 2 - w / 2, py + TILE - h, w, h);
+    return;
+  }
   ctx.font = "22px serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -1293,6 +1476,10 @@ function drawNpc(px, py) {
 }
 
 function drawAltar(px, py) {
+  if (spriteAltarReady) {
+    ctx.drawImage(spriteAltar, 0, 0, ALTAR_SPRITE_W, ALTAR_SPRITE_H, px, py + TILE - ALTAR_SPRITE_H, ALTAR_SPRITE_W, ALTAR_SPRITE_H);
+    return;
+  }
   ctx.font = "26px serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -1316,6 +1503,10 @@ function drawLockedDoor(px, py) {
 }
 
 function drawGate(px, py) {
+  if (spriteGateReady) {
+    ctx.drawImage(spriteGate, 0, 0, TILE, TILE, px, py, TILE, TILE);
+    return;
+  }
   ctx.font = "22px serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -1343,11 +1534,30 @@ const TILE_SPRITES = {
 
 function drawPlayer(px, py) {
   const half = player.w / 2;
-  // shadow
+  const feetY = py + half + 2; // ground-contact point — matches the old shadow's position
+
+  // shadow (kept for both the sprite and fallback paths — grounds the character either way)
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.beginPath();
-  ctx.ellipse(px, py + half + 2, half, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(px, feetY, half, 5, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  if (spritePlayerReady) {
+    const row = PLAYER_SPRITE_ROWS[player.dir] ?? 2;
+    const frameCol = player.moving ? 1 + (Math.floor(performance.now() / PLAYER_WALK_FRAME_DURATION) % 8) : 0;
+    ctx.drawImage(
+      spritePlayer,
+      frameCol * PLAYER_SPRITE_FRAME_SIZE,
+      row * PLAYER_SPRITE_FRAME_SIZE,
+      PLAYER_SPRITE_FRAME_SIZE,
+      PLAYER_SPRITE_FRAME_SIZE,
+      px - PLAYER_SPRITE_FRAME_SIZE / 2,
+      feetY - PLAYER_SPRITE_FRAME_SIZE,
+      PLAYER_SPRITE_FRAME_SIZE,
+      PLAYER_SPRITE_FRAME_SIZE
+    );
+    return;
+  }
 
   // body
   ctx.fillStyle = "#3a5fcc";
@@ -1438,8 +1648,14 @@ function render() {
         continue;
       }
       const t = map[ty][tx];
-      ctx.fillStyle = tileColor(baseTileFor(t));
-      ctx.fillRect(px, py, TILE, TILE);
+      const baseT = baseTileFor(t);
+      const groundSprite = groundSpriteFor(baseT, tx, ty);
+      if (groundSprite) {
+        ctx.drawImage(groundSprite.img, groundSprite.sx, groundSprite.sy, TILE, TILE, px, py, TILE, TILE);
+      } else {
+        ctx.fillStyle = tileColor(baseT);
+        ctx.fillRect(px, py, TILE, TILE);
+      }
     }
   }
 
