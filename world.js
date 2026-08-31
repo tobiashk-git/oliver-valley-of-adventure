@@ -165,8 +165,29 @@ function buildWorld(worldNumber) {
   // always return here regardless of which world is currently active).
   if (worldNumber === 1) {
     const houseLevel = buildInterior({ width: 11, height: 9, wallTile: T.WALL, floorTile: T.FLOOR, chests: [] });
-    houseLevel.map[2][2] = T.CHEST;
-    houseLevel.chestTiles.push({ x: 2, y: 2, storageId: "house_chest" });
+    houseLevel.map[6][2] = T.CHEST; // bottom-left
+    houseLevel.chestTiles.push({ x: 2, y: 6, storageId: "house_chest" });
+
+    // Decorative dressing — hand-placed only here, not through
+    // buildInterior() (which every other interior, including the empty/
+    // elder/trader village houses, still uses bare). Interior floor spans
+    // x:1-9, y:1-7 (11x9 room, 1-tile wall border); door is at (5,8).
+    // Layout: bed top-left, chest bottom-left, stove top-right, table +
+    // chairs bottom-right, a big rug across the middle of the room.
+    houseLevel.furniture = new Map();
+    function placeFurniture(x, y, kind) {
+      houseLevel.map[y][x] = T.FURNITURE;
+      houseLevel.furniture.set(key(x, y), { kind });
+    }
+    placeFurniture(2, 4, "bed"); // top-left, head against the north wall
+    placeFurniture(8, 1, "stove"); // top-right, against the north wall
+    placeFurniture(7, 5, "table"); // bottom-right
+    placeFurniture(7, 4, "chair"); // north of the table
+    placeFurniture(7, 6, "chair"); // south of the table
+    houseLevel.map[6][0] = T.WINDOW_WALL; // west wall, clear of the bed above it
+    houseLevel.map[3][10] = T.WINDOW_WALL; // east wall
+    houseLevel.rugRect = { x: 4, y: 3, w: 3, h: 3 }; // tile units — one big rug, not a single small tile
+
     overworldLevel.portals.push({
       x: HOUSE_ENTRANCE.x,
       y: HOUSE_ENTRANCE.y,

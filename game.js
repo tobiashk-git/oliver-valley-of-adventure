@@ -48,6 +48,8 @@ const T = {
   GATE: 30,
   VILLAGE_PATH: 31,
   UNKNOWN_EVENT: 32,
+  FURNITURE: 33,
+  WINDOW_WALL: 34,
 };
 
 const SOLID_TILES = new Set([
@@ -72,6 +74,8 @@ const SOLID_TILES = new Set([
   T.FENCE,
   T.GATE,
   T.UNKNOWN_EVENT,
+  T.FURNITURE,
+  T.WINDOW_WALL,
 ]);
 
 // Open ground where random encounters can trigger — the whole overworld (valley +
@@ -635,7 +639,7 @@ const houseLevel = levels.house;
 
 let currentLevelId = null;
 let currentWorld = 1;
-let map, MAP_W, MAP_H, resources, worldEvents, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX, cameraZoom;
+let map, MAP_W, MAP_H, resources, worldEvents, furniture, rugRect, chestTiles, portals, bossTile, npcTile, altarTile, revealed, lockedDoor, bossRoom, bossRoomEntryX, cameraZoom;
 let lastPlayerTileX = null;
 let lastPlayerTileY = null;
 
@@ -647,6 +651,8 @@ function activateLevel(levelId, spawnX, spawnY) {
   MAP_H = lvl.height;
   resources = lvl.resources;
   worldEvents = lvl.worldEvents; // undefined on interior levels — nearestUnknownEvent()/etc. no-op then
+  furniture = lvl.furniture; // undefined everywhere except Oliver's own house
+  rugRect = lvl.rugRect; // undefined everywhere except Oliver's own house
   chestTiles = lvl.chestTiles;
   portals = lvl.portals;
   bossTile = lvl.bossTile;
@@ -791,6 +797,58 @@ const spritePath = new Image();
 let spritePathReady = false;
 spritePath.onload = () => (spritePathReady = true);
 spritePath.src = "assets/lpc/path.png";
+
+// House interior (the main house + every village house — all built via
+// buildInterior(), a simple one-tile-thick bordered room, so every wall
+// tile always borders floor and needs no isAdjacentToFloor() gating like
+// the dungeon/castle maze walls do).
+const spriteHouseWall = new Image();
+let spriteHouseWallReady = false;
+spriteHouseWall.onload = () => (spriteHouseWallReady = true);
+spriteHouseWall.src = "assets/lpc/house_wall.png";
+
+const spriteHouseFloor = new Image();
+let spriteHouseFloorReady = false;
+spriteHouseFloor.onload = () => (spriteHouseFloorReady = true);
+spriteHouseFloor.src = "assets/lpc/house_floor.png";
+
+// House window (a special wall tile — rendered at the base-tile layer like
+// house_wall.png, not as an overlay) and rug (a special floor tile).
+const spriteWindow = new Image();
+let spriteWindowReady = false;
+spriteWindow.onload = () => (spriteWindowReady = true);
+spriteWindow.src = "assets/lpc/window.png";
+
+// Not a tile at all — a single rug image stretched across a rectangular
+// area (`rugRect`, in tile units, set per-level like bossRoom) so it reads
+// as one rug covering real floor space instead of a single small tile.
+// Drawn in render()'s base-tile pass (see rugRect handling below), always
+// beneath furniture/the player, and never solid (it's just floor decor).
+const spriteRug = new Image();
+let spriteRugReady = false;
+spriteRug.onload = () => (spriteRugReady = true);
+spriteRug.src = "assets/lpc/rug.png";
+
+// Freestanding furniture (bed/chair/table/stove) — decorative, drawn
+// oversized and bottom-anchored on a single blocking tile, same idea as
+// drawTree()/drawHouseEntrance(). Hand-placed only in Oliver's own house
+// (world.js) — the empty/elder/trader village houses stay bare for now.
+// Looked up by kind via `furniture` (a per-level Map, synced in
+// activateLevel() like worldEvents), so one T.FURNITURE tile id covers
+// every piece rather than needing one tile id per furniture kind.
+function loadFurnitureSprite(src) {
+  const img = new Image();
+  let ready = false;
+  img.onload = () => (ready = true);
+  img.src = src;
+  return { img, isReady: () => ready };
+}
+const FURNITURE_SPRITES = {
+  bed: { ...loadFurnitureSprite("assets/lpc/furniture/bed.png"), w: 64, h: 128 },
+  chair: { ...loadFurnitureSprite("assets/lpc/furniture/chair.png"), w: 32, h: 32 },
+  table: { ...loadFurnitureSprite("assets/lpc/furniture/table.png"), w: 72, h: 45 },
+  stove: { ...loadFurnitureSprite("assets/lpc/furniture/stove.png"), w: 32, h: 36 },
+};
 
 // NPC sprites — one static (down-facing, non-animated) frame per kind, since
 // NPCs never move. Looked up by NPC_DEFS[...].spriteKind in drawNpc() below.
@@ -1319,6 +1377,7 @@ function baseTileFor(t, tx, ty) {
   if (t === T.HIDDEN_DUNGEON_ENTRANCE) return T.FOREST_GROUND;
   if (t === T.LOCKED_DOOR) return T.DUNGEON_FLOOR; // only ever placed inside maze ("dungeon"-type) interiors
   if (t === T.GATE) return T.VILLAGE_GROUND;
+  if (t === T.FURNITURE) return T.FLOOR; // only ever placed in the house
   return t;
 }
 
@@ -1345,6 +1404,9 @@ function isAdjacentToFloor(tx, ty) {
 
 function groundSpriteFor(baseT, tx, ty) {
   if (baseT === T.GRASS && spriteGrassReady) return { img: spriteGrass, sx: 0, sy: 160 };
+  if (baseT === T.FLOOR && spriteHouseFloorReady) return { img: spriteHouseFloor, sx: 0, sy: 0 };
+  if (baseT === T.WALL && spriteHouseWallReady) return { img: spriteHouseWall, sx: 0, sy: 0 };
+  if (baseT === T.WINDOW_WALL && spriteWindowReady) return { img: spriteWindow, sx: 0, sy: 0 };
   if (baseT === T.DUNGEON_FLOOR && spriteDungeonFloorReady) return { img: spriteDungeonFloor, sx: 0, sy: 0 };
   // Only the one layer of wall actually bordering a room/corridor reads as
   // built brick — everything beyond that falls through to tileColor()'s
@@ -1374,6 +1436,8 @@ function tileColor(t) {
       return "#6b4a34";
     case T.FLOOR:
       return "#d8c396";
+    case T.WINDOW_WALL:
+      return "#6b4a34"; // same as T.WALL until its sprite loads
     case T.DOOR:
       return "#8a5a34";
     case T.PATH:
@@ -1673,6 +1737,22 @@ function drawNpc(px, py) {
   ctx.fillText(def ? def.icon : "🧑", px + TILE / 2, py + TILE / 2 + 1);
 }
 
+// A single T.FURNITURE tile id covers every piece — which one to draw is
+// looked up per-position from `furniture`, same idea as drawUnknownEvent().
+// No emoji fallback (unlike every other sprite in the game): a missing
+// image here would just draw nothing, which is fine for purely decorative
+// dressing that was never there in earlier sessions anyway.
+function drawFurniture(px, py, tx, ty) {
+  const piece = furniture && furniture.get(key(tx, ty));
+  if (!piece) return;
+  const spec = FURNITURE_SPRITES[piece.kind];
+  if (!spec || !spec.isReady()) return;
+  // Oversized and bottom-anchored, same convention as drawTree()/
+  // drawHouseEntrance() — furniture reads as taller/bigger than the single
+  // tile it blocks for collision purposes.
+  ctx.drawImage(spec.img, 0, 0, spec.w, spec.h, px + TILE / 2 - spec.w / 2, py + TILE - spec.h, spec.w, spec.h);
+}
+
 // Undiscovered events draw nothing at all — the ground layer underneath
 // (baseTileFor()'s per-instance lookup above) already paints the correct
 // plain biome color/sprite, so an unrevealed event is indistinguishable
@@ -1743,6 +1823,7 @@ const TILE_SPRITES = {
   [T.LOCKED_DOOR]: drawLockedDoor,
   [T.GATE]: drawGate,
   [T.UNKNOWN_EVENT]: drawUnknownEvent,
+  [T.FURNITURE]: drawFurniture,
 };
 
 function drawPlayer(px, py) {
@@ -1870,6 +1951,23 @@ function render() {
         ctx.fillRect(px, py, TILE, TILE);
       }
     }
+  }
+
+  // Rug — one image stretched across rugRect (tile units), drawn after the
+  // base tiles (so it sits on top of the floor) but before any overlay/
+  // drawable (so furniture and the player always sit on top of it).
+  if (rugRect && spriteRugReady) {
+    ctx.drawImage(
+      spriteRug,
+      0,
+      0,
+      spriteRug.width,
+      spriteRug.height,
+      rugRect.x * TILE - camX,
+      rugRect.y * TILE - camY,
+      rugRect.w * TILE,
+      rugRect.h * TILE
+    );
   }
 
   // build draw list (resources + player) sorted by y for simple depth ordering

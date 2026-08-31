@@ -12,6 +12,13 @@ Assets from the Liberated Pixel Cup (LPC) base asset pack (opengameart.org).
 - `chest.png` (cropped from `chests.png`) — Lanea Zimmerman ("Sharm")
 - `fence.png` / `gate.png` (cropped from `bridges.png`) — Lanea Zimmerman ("Sharm")
 - `altar.png` (from `cup.png`) — Lanea Zimmerman ("Sharm")
+- `house_wall.png` (cropped from `house.png`) — Lanea Zimmerman ("Sharm")
+- `house_floor.png` (cropped from `inside.png`) — Lanea Zimmerman ("Sharm")
+- `window.png` (cropped from `house.png`) — Lanea Zimmerman ("Sharm")
+- `rug.png` (cropped from `cabinets.png`) — Lanea Zimmerman ("Sharm")
+- `furniture/bed.png`, `furniture/chair.png` (cropped from `country.png`) — Lanea Zimmerman ("Sharm")
+- `furniture/table.png` (cropped from `cabinets.png`) — Lanea Zimmerman ("Sharm")
+- `furniture/stove.png` (cropped from `kitchen.png`) — Lanea Zimmerman ("Sharm")
 
 ## CC-BY-SA 3.0 / GPL 3.0 (attribution required, share-alike for derivatives)
 
