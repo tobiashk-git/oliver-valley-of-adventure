@@ -30,6 +30,15 @@ let playerStatus = {}; // { poison: { turnsLeft }, ... } — reset whenever comb
 let selectingTarget = null; // { kind: "attack" } | { kind: "spell", spellId } | null
 let currentBossId = null; // set for the duration of a boss fight, null during any random encounter
 
+// Sprite-first, emoji-fallback — same idea as every canvas sprite elsewhere
+// (assets/lpc/CREDITS.md), just rendered as an <img> since the battle screen
+// and encounter marker are plain DOM, not canvas — no preload/ready-flag
+// dance needed here, the <img> tag handles its own async loading.
+function enemyIconHtml(def) {
+  if (def.sprite) return `<img src="${def.sprite}" class="enemy-sprite-img" alt="${def.name}">`;
+  return def.icon;
+}
+
 // Delays eligibility by `steps` new tiles from now (used so entering a fresh
 // area — like walking into the dungeon — always gives a safe look-around first).
 function armEncounterGracePeriod(steps) {
@@ -209,7 +218,7 @@ function beginEncounterAppearance() {
   inCombat = true; // freeze exploration movement/keys immediately
 
   const marker = document.getElementById("encounter-marker");
-  marker.textContent = encounterGroup.map((def) => def.icon).join(" ");
+  marker.innerHTML = encounterGroup.map((def) => enemyIconHtml(def)).join(" ");
   positionEncounterMarker();
   marker.className = "encounter-marker visible";
 
@@ -677,7 +686,7 @@ function renderBattleScreen() {
     const hpPct = Math.max(0, (enemy.hp / enemy.def.maxHp) * 100);
     const maxMp = enemy.def.maxMp;
     const mpPct = maxMp > 0 ? Math.max(0, (enemy.mp / maxMp) * 100) : 0;
-    document.getElementById(`battle-enemy-icon-${i}`).textContent = enemy.def.icon;
+    document.getElementById(`battle-enemy-icon-${i}`).innerHTML = enemyIconHtml(enemy.def);
     document.getElementById(`battle-enemy-name-${i}`).textContent = enemy.def.name;
     document.getElementById(`battle-enemy-hp-bar-${i}`).style.width = `${hpPct}%`;
     document.getElementById(`battle-enemy-hp-text-${i}`).textContent = `${enemy.hp} / ${enemy.def.maxHp}`;

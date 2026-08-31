@@ -1594,6 +1594,22 @@ function drawCastleEntrance(px, py) {
   ctx.fillRect(x + 2, y - 6, 6, 6);
 }
 
+// Image objects are cached by src so repeated frames don't allocate a new
+// Image() every draw — same idea as every other *Ready flag elsewhere, just
+// keyed dynamically since bosses are looked up by id rather than each having
+// their own named variable. img.complete/naturalWidth is the native way to
+// check load state without needing a separate onload-flag per entry.
+const bossSpriteCache = {};
+function getCachedSprite(path) {
+  let img = bossSpriteCache[path];
+  if (!img) {
+    img = new Image();
+    img.src = path;
+    bossSpriteCache[path] = img;
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
 function drawBoss(px, py) {
   if (!bossTile) return;
   const def = BOSS_DEFS[bossTile.bossId];
@@ -1604,10 +1620,22 @@ function drawBoss(px, py) {
   if (defeated) ctx.globalAlpha = 0.4;
   ctx.fillStyle = flashing ? "#f5d347" : defeated ? "#3a3a3a" : "#4a1010";
   ctx.fillRect(px + 2, py + 2, TILE - 4, TILE - 4);
-  ctx.font = "20px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(def ? def.icon : "👹", px + TILE / 2, py + TILE / 2 + 1);
+
+  const sprite = def && def.sprite && getCachedSprite(def.sprite);
+  if (sprite) {
+    // Oversized and bottom-anchored like every other landscape sprite (tree,
+    // house, altar) — a boss should read as bigger and more dramatic than
+    // the backing tile it stands on, not squeezed to fit inside it.
+    const BOSS_SPRITE_SCALE = 1.6;
+    const w = sprite.width * BOSS_SPRITE_SCALE;
+    const h = sprite.height * BOSS_SPRITE_SCALE;
+    ctx.drawImage(sprite, 0, 0, sprite.width, sprite.height, px + TILE / 2 - w / 2, py + TILE - h, w, h);
+  } else {
+    ctx.font = "20px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(def ? def.icon : "👹", px + TILE / 2, py + TILE / 2 + 1);
+  }
   ctx.restore();
 }
 

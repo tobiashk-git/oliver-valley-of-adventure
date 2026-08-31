@@ -606,6 +606,17 @@ canvas {
   filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.6));
 }
 
+/* Sized in em so it automatically matches whichever parent's font-size sets
+   the icon scale (.battle-enemy-icon desktop/mobile, .encounter-marker) —
+   same sprite-first/emoji-fallback idea as the canvas sprites, just for the
+   battle screen's plain-DOM icons (see enemyIconHtml() in combat.js). */
+.enemy-sprite-img {
+  width: 1em;
+  height: 1em;
+  image-rendering: pixelated;
+  vertical-align: middle;
+}
+
 .battle-enemy-name {
   font-size: 14px;
   font-weight: bold;
