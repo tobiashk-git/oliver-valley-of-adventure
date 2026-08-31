@@ -1803,22 +1803,25 @@ function drawLockedDoor(px, py) {
 const GATE_SPRITE_W = 32;
 const GATE_SPRITE_H = 56; // a proper paneled door, not a single flat plank tile
 
-function drawGate(px, py) {
+function drawGate(px, py, tx, ty) {
   if (spriteGateReady) {
-    // Oversized and bottom-anchored, same convention as furniture/trees —
-    // reads as a real door standing in the fence line rather than a texture
-    // squeezed into a single flat tile.
-    ctx.drawImage(
-      spriteGate,
-      0,
-      0,
-      GATE_SPRITE_W,
-      GATE_SPRITE_H,
-      px + TILE / 2 - GATE_SPRITE_W / 2,
-      py + TILE - GATE_SPRITE_H,
-      GATE_SPRITE_W,
-      GATE_SPRITE_H
-    );
+    // Oversized, same idea as furniture/trees, but which way it overflows
+    // depends on which wall it's set into — the extra height always needs
+    // to extend toward the village interior, not out past the fence line
+    // or up into the solid fence tile directly above/below it on a side
+    // wall. North wall: overflow down. South wall: overflow up (bottom-
+    // anchored, the simple case). East/west walls run vertically, so
+    // there's no single "toward the interior" direction for the extra
+    // height — split it evenly instead of favoring one neighbor tile.
+    let destY;
+    if (ty === VILLAGE_BOUNDS.y0) {
+      destY = py;
+    } else if (tx === VILLAGE_BOUNDS.x0 || tx === VILLAGE_BOUNDS.x1) {
+      destY = py + TILE / 2 - GATE_SPRITE_H / 2;
+    } else {
+      destY = py + TILE - GATE_SPRITE_H;
+    }
+    ctx.drawImage(spriteGate, 0, 0, GATE_SPRITE_W, GATE_SPRITE_H, px + TILE / 2 - GATE_SPRITE_W / 2, destY, GATE_SPRITE_W, GATE_SPRITE_H);
     return;
   }
   ctx.font = "22px serif";
