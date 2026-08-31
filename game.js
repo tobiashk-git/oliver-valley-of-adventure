@@ -1805,23 +1805,33 @@ const GATE_SPRITE_H = 56; // a proper paneled door, not a single flat plank tile
 
 function drawGate(px, py, tx, ty) {
   if (spriteGateReady) {
-    // Oversized, same idea as furniture/trees, but which way it overflows
-    // depends on which wall it's set into — the extra height always needs
-    // to extend toward the village interior, not out past the fence line
-    // or up into the solid fence tile directly above/below it on a side
-    // wall. North wall: overflow down. South wall: overflow up (bottom-
-    // anchored, the simple case). East/west walls run vertically, so
-    // there's no single "toward the interior" direction for the extra
-    // height — split it evenly instead of favoring one neighbor tile.
-    let destY;
-    if (ty === VILLAGE_BOUNDS.y0) {
-      destY = py;
-    } else if (tx === VILLAGE_BOUNDS.x0 || tx === VILLAGE_BOUNDS.x1) {
-      destY = py + TILE / 2 - GATE_SPRITE_H / 2;
+    const cx = px + TILE / 2;
+    const cy = py + TILE / 2;
+    if (ty === VILLAGE_BOUNDS.y0 || ty === VILLAGE_BOUNDS.y1) {
+      // North/south walls run horizontally — rotate the (taller-than-wide)
+      // door 90° so it lies along the wall instead of poking up/down out of
+      // the single-tile-tall row. Overflows evenly left/right instead.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(spriteGate, 0, 0, GATE_SPRITE_W, GATE_SPRITE_H, -GATE_SPRITE_W / 2, -GATE_SPRITE_H / 2, GATE_SPRITE_W, GATE_SPRITE_H);
+      ctx.restore();
     } else {
-      destY = py + TILE - GATE_SPRITE_H;
+      // East/west walls run vertically, so the door's natural (tall)
+      // orientation already lies along the wall — center the overflow
+      // evenly rather than favoring the fence tile above or below it.
+      ctx.drawImage(
+        spriteGate,
+        0,
+        0,
+        GATE_SPRITE_W,
+        GATE_SPRITE_H,
+        cx - GATE_SPRITE_W / 2,
+        cy - GATE_SPRITE_H / 2,
+        GATE_SPRITE_W,
+        GATE_SPRITE_H
+      );
     }
-    ctx.drawImage(spriteGate, 0, 0, GATE_SPRITE_W, GATE_SPRITE_H, px + TILE / 2 - GATE_SPRITE_W / 2, destY, GATE_SPRITE_W, GATE_SPRITE_H);
     return;
   }
   ctx.font = "22px serif";
