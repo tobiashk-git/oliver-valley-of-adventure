@@ -784,7 +784,7 @@ spriteFence.src = "assets/lpc/fence.png";
 const spriteGate = new Image();
 let spriteGateReady = false;
 spriteGate.onload = () => (spriteGateReady = true);
-spriteGate.src = "assets/lpc/gate.png";
+spriteGate.src = "assets/lpc/gate.png?v=2"; // cache-bust: swapped the flat plank crop for a proper paneled door
 
 const spriteAltar = new Image();
 let spriteAltarReady = false;
@@ -1800,9 +1800,25 @@ function drawLockedDoor(px, py) {
   ctx.fillText("🔒", px + TILE / 2, py + TILE / 2 + 1);
 }
 
+const GATE_SPRITE_W = 32;
+const GATE_SPRITE_H = 56; // a proper paneled door, not a single flat plank tile
+
 function drawGate(px, py) {
   if (spriteGateReady) {
-    ctx.drawImage(spriteGate, 0, 0, TILE, TILE, px, py, TILE, TILE);
+    // Oversized and bottom-anchored, same convention as furniture/trees —
+    // reads as a real door standing in the fence line rather than a texture
+    // squeezed into a single flat tile.
+    ctx.drawImage(
+      spriteGate,
+      0,
+      0,
+      GATE_SPRITE_W,
+      GATE_SPRITE_H,
+      px + TILE / 2 - GATE_SPRITE_W / 2,
+      py + TILE - GATE_SPRITE_H,
+      GATE_SPRITE_W,
+      GATE_SPRITE_H
+    );
     return;
   }
   ctx.font = "22px serif";
